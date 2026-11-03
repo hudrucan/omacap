@@ -45,7 +45,7 @@ InstanceHolder readHolder(QLockFile &lock, qint64 &pid) {
   if (::kill(static_cast<pid_t>(lockPid), 0) != 0 && errno == ESRCH)
     return InstanceHolder::Dead;
   // A live pid is not proof: after a crash leaves the lock file behind, its
-  // pid can be reused by another omasnap process (a pin never holds the
+  // pid can be reused by another omacap process (a pin never holds the
   // lock), which would then be sent SIGTERM. QLockFile keeps an exclusive
   // flock() on the file from before it writes the pid until it unlocks, so
   // a lock file nobody has flocked is stale whatever pid it names.
@@ -67,7 +67,7 @@ SignalOutcome terminateHolder(qint64 pid, QString &error) {
     return SignalOutcome::Sent;
   if (errno == ESRCH)
     return SignalOutcome::AlreadyGone;
-  error = QStringLiteral("Could not stop the running omasnap instance "
+  error = QStringLiteral("Could not stop the running omacap instance "
                          "(pid %1): %2")
               .arg(pid)
               .arg(QString::fromLocal8Bit(std::strerror(errno)));
@@ -161,7 +161,7 @@ InstanceLockResult acquireInstanceLock(QLockFile &lock, InstanceMode mode) {
     if (waitForHandover(lock))
       return {true, 0, {}, holderPid};
     return {false, kInstanceLockErrorExitCode,
-            QStringLiteral("Timed out waiting for omasnap (pid %1) to release "
+            QStringLiteral("Timed out waiting for omacap (pid %1) to release "
                            "the single-instance lock")
                 .arg(holderPid),
             holderPid};

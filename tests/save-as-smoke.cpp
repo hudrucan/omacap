@@ -49,7 +49,7 @@ template <typename Predicate> bool waitUntil(Predicate ready) {
 }
 QFileDialog *saveDialog() {
   for (QWidget *widget : QApplication::topLevelWidgets()) {
-    if (widget->objectName() == QStringLiteral("omasnap-save-as"))
+    if (widget->objectName() == QStringLiteral("omacap-save-as"))
       return qobject_cast<QFileDialog *>(widget);
   }
   return nullptr;
@@ -62,14 +62,14 @@ bool runSaveAsSmoke(QString &error) {
     error = QStringLiteral("Could not create Save As test directory");
     return false;
   }
-  const QByteArray previousRecents = qgetenv("OMASNAP_RECENT_DIR");
+  const QByteArray previousRecents = qgetenv("OMACAP_RECENT_DIR");
   const auto restoreRecents = qScopeGuard([&] {
     if (previousRecents.isNull())
-      qunsetenv("OMASNAP_RECENT_DIR");
+      qunsetenv("OMACAP_RECENT_DIR");
     else
-      qputenv("OMASNAP_RECENT_DIR", previousRecents);
+      qputenv("OMACAP_RECENT_DIR", previousRecents);
   });
-  qputenv("OMASNAP_RECENT_DIR", directory.filePath(QStringLiteral("recent")).toUtf8());
+  qputenv("OMACAP_RECENT_DIR", directory.filePath(QStringLiteral("recent")).toUtf8());
   const QString target = directory.filePath(QStringLiteral("chosen.png"));
   QImage original(100, 80, QImage::Format_ARGB32);
   original.fill(Qt::red);
@@ -298,8 +298,8 @@ bool runSaveAsSmoke(QString &error) {
   }
   // Under --notify, Save As announces the chosen file instead of previewing it.
   {
-    qputenv("OMASNAP_NOTIFY", "1");
-    const auto restoreNotify = qScopeGuard([] { qunsetenv("OMASNAP_NOTIFY"); });
+    qputenv("OMACAP_NOTIFY", "1");
+    const auto restoreNotify = qScopeGuard([] { qunsetenv("OMACAP_NOTIFY"); });
     // Keep the wording English whatever this desktop's language is.
     QFile i18n(directory.filePath(QStringLiteral("omarchy-i18n")));
     if (!i18n.open(QIODevice::WriteOnly) ||

@@ -161,17 +161,11 @@ private:
 namespace {
 constexpr std::array<qreal, 3> kTextSizes{2.0, 5.0, 9.0};
 constexpr std::array<const char *, 3> kTextSizeNames{"S", "M", "L"};
-constexpr qreal kToolbarWidth = 840;
+constexpr qreal kToolbarWidth = 528;
 // Toolbar row to the top of the image below it.
-constexpr qreal kToolbarImageGap = 18.0;
+constexpr qreal kToolbarImageGap = 16.0;
 // Preserve the editor's established top inset without capture-mode chrome.
 constexpr qreal kToolbarTop = 39.0;
-/// Extra spacing between toolbar groups (history / style / tools / actions),
-/// so the row reads as clusters rather than one flat strip. Ordinary gaps are
-/// tightened from 4px to 2.5px; across the 20 gaps that exactly pays for these
-/// three 10px additions, keeping the existing 840px toolbar envelope and,
-/// crucially, the canvas fit geometry derived from its scale.
-constexpr qreal kToolbarGroupGap = 10;
 constexpr qreal kMinimumRedactionExtent = 5.0;
 constexpr int kBackdropDim = 143;
 
@@ -301,7 +295,7 @@ constexpr qreal kRecentCardGap = 10.0;
 constexpr qreal kRecentEdgeMargin = 18.0;
 
 qreal toolbarScale(qreal availableWidth) {
-  constexpr qreal sideMargins = 16.0;
+  constexpr qreal sideMargins = 32.0;
   return std::min<qreal>(
       1.0,
       std::max<qreal>(0.1, (availableWidth - sideMargins) / kToolbarWidth));
@@ -803,9 +797,11 @@ namespace {
 bool rememberCapture(RecentSnapWriter &writer, const QImage &source,
                      const OperationLog &log,
                      const QImage &rendered,
-                     const std::optional<RecentSnap> &previous) {
+                     const std::optional<RecentSnap> &previous,
+                     RecentSnap *published = nullptr) {
   QString error;
-  if (writer.record(source, log, rendered, error, previous ? &*previous : nullptr))
+  if (writer.record(source, log, rendered, error,
+                    previous ? &*previous : nullptr, published))
     return true;
   qWarning().noquote() << error;
   return false;
@@ -857,7 +853,7 @@ CaptureEditor::CaptureEditor(CaptureData capture, CaptureMode mode,
       seedConfiguredBackground(defaultStyle);
     }
   }
-  setWindowTitle(QStringLiteral("Omasnap"));
+  setWindowTitle(QStringLiteral("Omacap"));
   setWindowFlags(Qt::Window | Qt::FramelessWindowHint |
                  Qt::WindowStaysOnTopHint);
   setAttribute(Qt::WA_TranslucentBackground);
@@ -2166,18 +2162,9 @@ bool CaptureEditor::focusNextPrevChild(bool next) {
   return QWidget::focusNextPrevChild(next);
 }
 
-QSizeF CaptureEditor::windowLegendSize() const {
-  // Chrome fonts are pinned in code; only available width changes layout.
-  if (legendWidth_ != width()) {
-    legendWidth_ = width();
-    legendSize_ = hotkeyLegendAnchoredSize(editorHotkeyEntries(), width() - 28.0);
-  }
-  return legendSize_;
-}
-
 qreal CaptureEditor::toolbarTop() const {
   if (windowedPresentation_)
-    return 14 + windowLegendSize().height() + 42;
+    return 56;
   return kToolbarTop;
 }
 
@@ -2202,19 +2189,14 @@ qreal CaptureEditor::chromeAnchorTop() const {
 qreal CaptureEditor::contentBandTop() const {
   if (!windowedPresentation_)
     return 60;
-  return 14 +
-         windowLegendSize().height() +
-         42 + 36;
+  return 92;
 }
 
 QRectF CaptureEditor::baseImageRect() const {
   if (selection_.isEmpty() || canvasRect_.isEmpty())
     return {};
-  // A windowed editor stacks the key guide above the toolbar, so its top
-  // band is as tall as the guide actually is at this width, plus the
-  // toolbar, the row the color dropdown and its popover peers hang into,
-  // and clearance for the selection's top handles; the capture keeps a
-  // generous mat margin on the other three sides.
+  // Leave room for the dock, its popovers, and the top crop handles.
+  // Help is an on-demand overlay and does not reserve document space.
   const qreal top =
       windowedPresentation_ ? contentBandTop() + 54 : imageTopMargin();
   const qreal side = windowedPresentation_ ? 64 : 30;
@@ -2282,7 +2264,8 @@ bool CaptureEditor::canStartAnnotationAt(const QPointF &position) const {
     return false;
   // Popovers overlap the content band. Their buttons are handled before the
   // workspace, while their padding must remain chrome rather than canvas.
-  if ((colorPaletteOpen_ && colorPaletteRect().contains(position)) ||
+  if ((moreMenuOpen_ && moreMenuRect().contains(position)) ||
+      (colorPaletteOpen_ && colorPaletteRect().contains(position)) ||
       (customColorPickerOpen_ && customColorPanelRect().contains(position)) ||
       (shapeMenuOpen_ && shapeMenuRect().contains(position)) ||
       (textSizeMenuOpen_ && textSizePanelRect().contains(position)))
@@ -2674,10 +2657,8 @@ CaptureEditor::toolbarButtons(QVector<qreal> *groupDividers,
   QVector<ToolbarButton> buttons;
   const qreal scale = toolbarScale(width());
   const qreal height = 36 * scale;
-  const qreal gap = 2.5 * scale;
-  const qreal groupGap = kToolbarGroupGap * scale;
-  const qreal total = kToolbarWidth * scale;
-  qreal x = (width() - total) / 2.0;
+  const qreal gap = 6 * scale;
+  qreal x = (width() - kToolbarWidth * scale) / 2.0;
   const qreal y = toolbarTop();
   auto add = [&](qreal buttonWidth, QString action, QString label,
                  QString tooltip, QColor color = {}) {
@@ -2686,87 +2667,56 @@ CaptureEditor::toolbarButtons(QVector<qreal> *groupDividers,
                        std::move(label), std::move(tooltip), color});
     x += scaledWidth + gap;
   };
-  /// Marks the end of a logical cluster: widens the trailing gap and, when
-  /// the caller wants dividers drawn, records the gap's midpoint.
   auto endGroup = [&]() {
     if (groupDividers)
-      groupDividers->push_back(x - gap + groupGap / 2.0);
-    x += groupGap;
+      groupDividers->push_back(x - gap + 7 * scale);
+    x += 14 * scale;
   };
 
-  // History: undo/redo together, leading the bar.
-  add(36, QStringLiteral("undo"), {}, QStringLiteral("Undo · Ctrl+Z"));
-  add(36, QStringLiteral("redo"), {},
-      QStringLiteral("Redo · Ctrl+Shift+Z / Ctrl+Y"));
-  endGroup();
-
-  // Style: canvas backdrop and annotation color.
-  add(36, QStringLiteral("background"), {},
-      QStringLiteral("Cycle backdrop · B"));
-  add(36, QStringLiteral("palette"), {}, QStringLiteral("Annotation color"),
-      annotationColor());
-  endGroup();
-
-  // Tools: everything that acts on the image via the cursor.
-  add(36, QStringLiteral("tool-select"), {},
-      QStringLiteral("Select/move · V · Ctrl+wheel zoom · outer handles crop"));
+  add(36, QStringLiteral("tool-select"), {}, QStringLiteral("Select / crop · V"));
   add(36, arrowToolAction(arrowStyle_), {},
-      QStringLiteral("Arrow · %1 · A cycles · Shift snaps 45° / centers "
-                     "bend · Size %2 · Wheel")
-          .arg(arrowStyleName(arrowStyle_))
-          .arg(qRound(annotationSize_)));
-  add(36, QStringLiteral("tool-line"), {},
-      QStringLiteral("Line · L · Shift snaps 45° · Size %1 · Wheel")
-          .arg(qRound(annotationSize_)));
-  add(36, QStringLiteral("tool-freehand"), {},
-      QStringLiteral("Freehand · F · Size %1 · Wheel · Smoothing %2/%3 · "
-                     "Alt+Wheel")
-          .arg(qRound(annotationSize_))
-          .arg(freehandSmoothingLevel_)
-          .arg(stroke::maximumSmoothingLevel));
-  add(36, QStringLiteral("tool-highlighter"), {}, highlighterTooltip());
-  add(36, QStringLiteral("tool-marker"), {},
-      QStringLiteral("Number marker · C · Size %1 · Wheel")
-          .arg(qRound(annotationSize_)));
-  const QString fillHint = fillShapes_ ? QStringLiteral("filled") : QString();
-  const bool ellipseSelected = tool_ == Tool::Ellipse;
-  add(36, ellipseSelected ? QStringLiteral("tool-ellipse")
-                          : QStringLiteral("tool-rectangle"),
-      fillHint,
-      QStringLiteral("Shapes · R rectangle · E ellipse · hover for fill"));
-  add(36, QStringLiteral("tool-spotlight"), {},
-      QStringLiteral("Spotlight · S · %1 · %2× · S cycles shape")
-          .arg(spotlightShape_ == SpotlightShape::Ellipse
-                   ? QStringLiteral("ellipse")
-                   : spotlightShape_ == SpotlightShape::Rectangle
-                         ? QStringLiteral("rectangle")
-                         : QStringLiteral("rounded"))
-          .arg(spotlightMagnification_, 0, 'f', 1));
-  add(36, QStringLiteral("tool-redact"), {},
-      QStringLiteral("Redact · D · %1 · D again toggles")
-          .arg(redactionStyleName(redactionStyle_)));
-  add(36, QStringLiteral("tool-cut"), {},
-      cutInsertHint()
-          ? QStringLiteral("Insert a band · drag across")
-          : QStringLiteral("Cut out a band · X · drag across"));
-  add(36, QStringLiteral("tool-text"), {},
-      QStringLiteral("%1 text · T · %2 · %3 · T again cycles style · "
-                     "Shift+T cycles font · Wheel")
-          .arg(annotationTextFontName(textFont_))
-          .arg(QString::fromLatin1(
-              kTextSizeNames.at(static_cast<std::size_t>(textSizeIndex_))))
-          .arg(textBackgroundName(textBackground_)));
-  add(36, QStringLiteral("tool-ocr"), {},
-      QStringLiteral("Copy all text in the image · O"));
+      QStringLiteral("Arrow · A · press again to change style"));
+  add(36, QStringLiteral("tool-freehand"), {}, QStringLiteral("Draw · F"));
+  add(36, tool_ == Tool::Ellipse ? QStringLiteral("tool-ellipse")
+                                : QStringLiteral("tool-rectangle"),
+      fillShapes_ ? QStringLiteral("filled") : QString(),
+      QStringLiteral("Shapes · R / E"));
+  add(36, QStringLiteral("tool-text"), {}, QStringLiteral("Text · T"));
+  add(36, QStringLiteral("tool-redact"), {}, QStringLiteral("Hide sensitive details · D"));
   endGroup();
-
-  // Actions: pin and finish/exit the capture.
-  add(36, QStringLiteral("pin"), {},
-      QStringLiteral("Keep on screen · Ctrl+P / P · Ctrl+C on the pin copies it"));
-  add(36, QStringLiteral("copy"), {}, QStringLiteral("Copy only · Ctrl+C"));
-  add(40, QStringLiteral("both"), {}, QStringLiteral("Copy and save · Enter"));
-  add(36, QStringLiteral("save"), {}, QStringLiteral("Save only · Ctrl+S"));
+  add(36, QStringLiteral("palette"), {}, QStringLiteral("Color"), annotationColor());
+  add(36, QStringLiteral("undo"), {}, QStringLiteral("Undo · Ctrl+Z"));
+  add(36, QStringLiteral("more"), {}, QStringLiteral("More tools and actions"));
+  endGroup();
+  add(76, QStringLiteral("copy"), QStringLiteral("Copy"),
+      QStringLiteral("Copy only · Enter / Ctrl+C"));
+  x += 4 * scale;
   add(36, QStringLiteral("close"), {}, QStringLiteral("Close · Esc"));
+
+  if (includeSubmenus && moreMenuOpen_) {
+    const QRectF menu = moreMenuRect();
+    const QVector<QPair<QString, QString>> extras{
+        {QStringLiteral("tool-line"), QStringLiteral("Line")},
+        {QStringLiteral("tool-highlighter"), QStringLiteral("Highlight")},
+        {QStringLiteral("tool-marker"), QStringLiteral("Number")},
+        {QStringLiteral("tool-spotlight"), QStringLiteral("Spotlight")},
+        {QStringLiteral("tool-cut"), QStringLiteral("Cut band")},
+        {QStringLiteral("tool-ocr"), QStringLiteral("Copy text")},
+        {QStringLiteral("background"), QStringLiteral("Backdrop")},
+        {QStringLiteral("redo"), QStringLiteral("Redo")},
+        {QStringLiteral("pin"), QStringLiteral("Pin")},
+        {QStringLiteral("both"), QStringLiteral("Copy + save")},
+        {QStringLiteral("save"), QStringLiteral("Save")},
+        {QStringLiteral("help"), QStringLiteral("Shortcuts")}};
+    const qreal cellWidth = (menu.width() - 28) / 2;
+    for (int index = 0; index < extras.size(); ++index) {
+      const auto &entry = extras.at(index);
+      buttons.push_back({{menu.left() + 10 + (index % 2) * (cellWidth + 8),
+                          menu.top() + 10 + (index / 2) * 36,
+                          cellWidth, 30},
+                         entry.first, entry.second, entry.second, {}});
+    }
+  }
 
   if (includeSubmenus && shapeMenuOpen_) {
     const QRectF menu = shapeMenuRect();
@@ -2802,6 +2752,14 @@ CaptureEditor::toolbarButtons(QVector<qreal> *groupDividers,
                        QStringLiteral("Sample from image · I"), {}});
   }
   return buttons;
+}
+
+QRectF CaptureEditor::moreMenuRect() const {
+  const QRectF anchor = toolbarButtonRect(QStringLiteral("more"));
+  const qreal menuWidth = std::min<qreal>(340, width() - 28);
+  const qreal left = std::clamp(anchor.right() - menuWidth, 14.0,
+                               std::max(14.0, width() - menuWidth - 14));
+  return {left, anchor.bottom() + 12, menuWidth, 236};
 }
 
 QRectF CaptureEditor::toolbarButtonRect(const QString &action) const {
@@ -3400,6 +3358,14 @@ void CaptureEditor::startSnapshotRender() {
       }));
 }
 
+void CaptureEditor::waitForBackdrop() {
+  while (backdropWatcher_.isRunning()) {
+    QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+    QThread::yieldCurrentThread();
+  }
+  QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+}
+
 bool CaptureEditor::waitForSnapshot() {
   // Drain in-flight and coalesced snapshot renders, letting the event loop
   // run so the watcher signals can chain the next render. Only smoke tests
@@ -3486,7 +3452,7 @@ void CaptureEditor::handOffEditor(bool toWindow) {
           pinDocument->preserveForEditor();
         return QString();
       }
-      error = QStringLiteral("Could not start omasnap");
+      error = QStringLiteral("Could not start omacap");
     }
     QFile::remove(path);
     QFile::remove(operationLogPath(path));
@@ -4206,6 +4172,7 @@ void CaptureEditor::finish(OutputMode mode) {
     result.mode = mode;
     result.snapshotsSuppressed = snapshotsSuppressed;
     RecentSnapWriter recent(log.recentId);
+    bool copiedNotice = false;
     const auto cleanWorkingDocument = [&] {
       pendingSnapshot.waitForFinished();
       if (!workingLog.isEmpty())
@@ -4219,7 +4186,13 @@ void CaptureEditor::finish(OutputMode mode) {
     const auto retainAfterOutput = qScopeGuard([&] {
       startupTimingMark("capture output ready");
       completion.addResult(result);
-      const bool remembered = rememberCapture(recent, source, log, image, previous);
+      RecentSnap published;
+      const bool remembered = rememberCapture(recent, source, log, image, previous, &published);
+      if (copiedNotice && result.error.isEmpty())
+        sendCaptureNotification(
+            remembered ? QStringLiteral("Screenshot copied to clipboard")
+                       : QStringLiteral("Screenshot copied; could not prepare Save/Edit"),
+            remembered ? published.thumbPath : QString(), log.recentId, launcher);
       // An unsuccessful shelf write must not delete the recovery document.
       if (remembered && result.error.isEmpty()) {
         cleanWorkingDocument();
@@ -4235,9 +4208,12 @@ void CaptureEditor::finish(OutputMode mode) {
     const bool autosave = mode == OutputMode::CopyAndPreview &&
                           loadOutputConfig(defaultConfigPath()).autosave;
     if (mode == OutputMode::CopyAndPreview && !autosave) {
-      static_cast<void>(launchPinnedCapture(
-          image, renderedCaptureLogicalSize(captureCopy, image.size()),
-          true, PinLifetime::Timed, result.error, launcher, log.recentId));
+      if (notifySavedCaptures())
+        copiedNotice = copyImageToClipboard(image, result.error);
+      else
+        static_cast<void>(launchPinnedCapture(
+            image, renderedCaptureLogicalSize(captureCopy, image.size()),
+            true, PinLifetime::Timed, result.error, launcher, log.recentId));
       return;
     }
     const QString exportPath = temporaryExportPath();
@@ -4312,14 +4288,25 @@ void CaptureEditor::completeFinish(const FinishResult &result) {
     close();
     return;
   }
-  // A copy-only preview's pin, or a saved capture's toast from the worker,
-  // is the completion UI; only a plain copy still needs telling.
-  if (result.mode == OutputMode::Copy)
-    sendCaptureNotification(QStringLiteral("Screenshot copied to clipboard"));
+  // Copy from an editor is already an explicit action; closing it is enough.
   dismissEditor(false);
 }
 
 void CaptureEditor::handleToolbar(const QString &action) {
+  if (action == QStringLiteral("more")) {
+    moreMenuOpen_ = !moreMenuOpen_;
+    colorPaletteOpen_ = false;
+    shapeMenuOpen_ = false;
+    textSizeMenuOpen_ = false;
+    update();
+    return;
+  }
+  moreMenuOpen_ = false;
+  if (action == QStringLiteral("help")) {
+    shortcutGuide_->setExpanded(!shortcutGuide_->expanded());
+    update();
+    return;
+  }
   const Tool toolBefore = tool_;
   const QString statusBefore = status_;
   if (action == QStringLiteral("tool-select"))
@@ -4471,6 +4458,18 @@ void CaptureEditor::keyPressEvent(QKeyEvent *event) {
   const QString statusBefore = status_;
   const bool dismiss = event->key() == Qt::Key_Escape ||
       (event->key() == Qt::Key_W && event->modifiers() == Qt::MetaModifier);
+  if (dismiss && moreMenuOpen_) {
+    moreMenuOpen_ = false;
+    update();
+    event->accept();
+    return;
+  }
+  if (moreMenuOpen_ && event->key() != Qt::Key_Shift &&
+      event->key() != Qt::Key_Control && event->key() != Qt::Key_Alt &&
+      event->key() != Qt::Key_Meta) {
+    moreMenuOpen_ = false;
+    update();
+  }
   if (capturePending_) {
     if (dismiss)
       handleEscape();
@@ -4667,7 +4666,7 @@ void CaptureEditor::keyPressEvent(QKeyEvent *event) {
       update();
       return;
     }
-    finish(OutputMode::Both);
+    finish(OutputMode::Copy);
     return;
   } else if (event->key() == Qt::Key_D &&
              event->modifiers() == Qt::AltModifier) {
@@ -5648,6 +5647,8 @@ void CaptureEditor::mouseMoveEvent(QMouseEvent *event) {
         textSizeIntentOrigin_ = cursor_;
       }
     }
+    if (moreMenuOpen_)
+      overPaletteAnchor = overShapeAnchor = overTextAnchor = false;
     const bool overPalette =
         colorPaletteOpen_ &&
         colorPaletteRect().adjusted(0, -4, 0, 0).contains(cursor_);
@@ -5835,6 +5836,11 @@ void CaptureEditor::mousePressEvent(QMouseEvent *event) {
       handleToolbar(button.action);
       return;
     }
+  }
+  if (moreMenuOpen_) {
+    moreMenuOpen_ = false;
+    update();
+    return;
   }
   if (tool_ == Tool::Select && selectedAnnotations_.isEmpty()) {
     const int cropHandle = cropHandleAt(cursor_);
@@ -6628,7 +6634,8 @@ void CaptureEditor::updatePointerCursor() {
     applyCursor(Qt::PointingHandCursor);
     return;
   }
-  if ((colorPaletteOpen_ && colorPaletteRect().contains(cursor_)) ||
+  if ((moreMenuOpen_ && moreMenuRect().contains(cursor_)) ||
+      (colorPaletteOpen_ && colorPaletteRect().contains(cursor_)) ||
       (customColorPickerOpen_ && customColorPanelRect().contains(cursor_)) ||
       (shapeMenuOpen_ && shapeMenuRect().contains(cursor_))) {
     clearHighlighterPreview();
@@ -7356,7 +7363,10 @@ void CaptureEditor::paintSelect(QPainter &painter) {
   }
   if (!exporting)
     paintRecents(painter);
-  drawStatusPill(painter, rect(), status_);
+  if (!dragging_)
+    drawStatusPill(painter, rect(), status_.isEmpty()
+        ? QStringLiteral("Drag to capture  ·  Esc to cancel  ·  ? for shortcuts")
+        : status_);
   if (!exporting)
     drawMeasureBadge(painter, rect(), cursor_, measurementText());
 }
@@ -7390,7 +7400,7 @@ QVector<QPair<QString, QString>> editorHotkeyEntries() {
           {QStringLiteral("W"), QStringLiteral("Editor to window / overlay")},
           {QStringLiteral("Ctrl+Z"), QStringLiteral("Undo")},
           {QStringLiteral("Ctrl+Shift+Z"), QStringLiteral("Redo")},
-          {QStringLiteral("Enter"), QStringLiteral("Copy + save")},
+          {QStringLiteral("Enter"), QStringLiteral("Copy only")},
           {QStringLiteral("Ctrl+C"), QStringLiteral("Copy only")},
           {QStringLiteral("Ctrl+S"), QStringLiteral("Save only")},
           {QStringLiteral("Ctrl+Shift+S"), QStringLiteral("Save As…")},
@@ -7872,6 +7882,19 @@ void CaptureEditor::paintEdit(QPainter &painter) {
   painter.setFont(buttonFont);
   QVector<qreal> toolbarDividers;
   const QVector<ToolbarButton> buttons = toolbarButtons(&toolbarDividers);
+  const QRectF dock((width() - kToolbarWidth * toolbarScale(width())) / 2.0 - 10,
+                    toolbarTop() - 10,
+                    kToolbarWidth * toolbarScale(width()) + 20,
+                    36 * toolbarScale(width()) + 20);
+  painter.setPen(QPen(chromeTheme().panelBorder.brush(dock), 1));
+  painter.setBrush(chromeTheme().surface);
+  painter.drawRoundedRect(dock, 14, 14);
+  if (moreMenuOpen_) {
+    const QRectF menu = moreMenuRect();
+    painter.setPen(QPen(chromeTheme().panelBorder.brush(menu), 1));
+    painter.setBrush(chromeTheme().surface);
+    painter.drawRoundedRect(menu, 12, 12);
+  }
   if (!toolbarDividers.isEmpty()) {
     const qreal scale = toolbarScale(width());
     const qreal barHeight = 36 * scale;
@@ -7894,6 +7917,7 @@ void CaptureEditor::paintEdit(QPainter &painter) {
         (button.action == QStringLiteral("shape-fill") && fillShapes_) ||
         (button.action == QStringLiteral("background") && hasBackground) ||
         (button.action == QStringLiteral("palette") && colorPaletteOpen_) ||
+        (button.action == QStringLiteral("more") && moreMenuOpen_) ||
         (button.action == QStringLiteral("custom-color") &&
          usingCustomColor_) ||
         (!usingCustomColor_ &&
@@ -7902,14 +7926,11 @@ void CaptureEditor::paintEdit(QPainter &painter) {
     if (hovered)
       hoveredButton = &button;
     const ChromeTheme &theme = chromeTheme();
-    painter.setPen(QPen((selected ? theme.buttonSelectedBorder
-                        : hovered ? theme.buttonHoverBorder : theme.buttonBorder)
-                           .brush(button.rect), 1));
-    painter.setBrush(selected ? chromeTheme().buttonSelected
-                              : (hovered ? chromeTheme().buttonHover
-                                         : chromeTheme().button));
-    if (button.action == QStringLiteral("both"))
-      painter.setBrush(chromeTheme().accent);
+    const bool primary = button.action == QStringLiteral("copy");
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(primary ? theme.accent
+                     : selected ? theme.buttonSelected
+                     : hovered ? theme.buttonHover : QColor(Qt::transparent));
     painter.drawRoundedRect(button.rect, 8, 8);
     if (button.color.isValid()) {
       const QPointF center = button.rect.center();
@@ -7928,11 +7949,26 @@ void CaptureEditor::paintEdit(QPainter &painter) {
                                              cutInsertHint()
                                            ? QStringLiteral("tool-cut-insert")
                                            : button.action;
-      const QColor text = button.action == QStringLiteral("both")
+      const QColor text = button.action == QStringLiteral("copy")
                               ? theme.accentText
                           : selected ? theme.buttonSelectedText
                           : hovered ? theme.buttonHoverText : theme.buttonText;
-      drawToolbarIcon(painter, button.rect, icon, button.label, text);
+      if (button.action == QStringLiteral("copy")) {
+        painter.setFont(chromeFont(12, true));
+        painter.setPen(text);
+        painter.drawText(button.rect, Qt::AlignCenter, button.label);
+      } else if (moreMenuOpen_ && moreMenuRect().contains(button.rect)) {
+        const QRectF glyph(button.rect.left() + 4, button.rect.top(), 28, button.rect.height());
+        drawToolbarIcon(painter, glyph, icon, {}, text);
+        painter.setFont(chromeFont(12));
+        painter.setPen(text);
+        const QRectF label = button.rect.adjusted(36, 0, -4, 0);
+        painter.drawText(label, Qt::AlignLeft | Qt::AlignVCenter,
+                         painter.fontMetrics().elidedText(button.label, Qt::ElideRight,
+                                                           qRound(label.width())));
+      } else {
+        drawToolbarIcon(painter, button.rect, icon, button.label, text);
+      }
     }
   }
   if (textSizeMenuOpen_ && !colorPaletteOpen_ && !customColorPickerOpen_) {
@@ -7969,73 +8005,15 @@ void CaptureEditor::paintEdit(QPainter &painter) {
     painter.drawText(pill, Qt::AlignCenter, QStringLiteral("SCROLL CAPTURE"));
   }
   drawStatusPill(painter, rect(), status_);
-  // A windowed editor has no clear margin for the overlay's key column; the
-  // guide spreads as a card over the reserved band above the toolbar.
-  if (windowedPresentation_) {
-    QRectF legendAnchor;
-    for (const ToolbarButton &button : buttons)
-      legendAnchor = legendAnchor.isNull() ? button.rect
-                                           : legendAnchor.united(button.rect);
-    drawAnchoredHotkeyLegend(painter, rect(), editorHotkeyEntries(),
-                             legendAnchor);
-  }
   if (hoveredButton) {
     drawInstantTooltip(painter, rect(), hoveredButton->rect,
                        hoveredButton->tooltip);
-  } else if (tool_ == Tool::Arrow || tool_ == Tool::Line ||
-             tool_ == Tool::Freehand || tool_ == Tool::Highlighter ||
-             tool_ == Tool::Marker || tool_ == Tool::Redact ||
-             tool_ == Tool::Rectangle || tool_ == Tool::Ellipse ||
-             tool_ == Tool::Text) {
-    const QString selectedAction = toolAction(tool_);
-    for (const ToolbarButton &button : buttons) {
-      if (button.action == selectedAction ||
-          (tool_ == Tool::Arrow &&
-           button.action.startsWith(QStringLiteral("tool-arrow-")))) {
-        QString tooltip;
-        if (tool_ == Tool::Text) {
-          tooltip = QStringLiteral(
-                        "%1 · S  M  L · current %2 · Scroll wheel · %3 · T "
-                        "again cycles style · Shift+T cycles font")
-                        .arg(annotationTextFontName(textFont_))
-                        .arg(QString::fromLatin1(kTextSizeNames.at(
-                            static_cast<std::size_t>(textSizeIndex_))))
-                        .arg(textBackgroundName(textBackground_));
-        } else if (tool_ == Tool::Redact) {
-          tooltip = QStringLiteral("Redact · %1 · D toggles style")
-                        .arg(redactionStyleName(redactionStyle_));
-        } else if (tool_ == Tool::Highlighter) {
-          tooltip = highlighterTooltip();
-        } else if (tool_ == Tool::Rectangle) {
-          tooltip = QStringLiteral("Rectangle · %1 · Size %2 · Scroll wheel · "
-                                   "Alt+Wheel %3")
-                        .arg(fillName(fillShapes_))
-                        .arg(qRound(annotationSize_))
-                        .arg(cornerName(cornerRadius_));
-        } else if (tool_ == Tool::Ellipse) {
-          tooltip = QStringLiteral("Ellipse · %1 · Size %2 · Scroll wheel")
-                        .arg(fillName(fillShapes_))
-                        .arg(qRound(annotationSize_));
-        } else if (tool_ == Tool::Freehand) {
-          tooltip = QStringLiteral("Size %1 · Scroll wheel · Smoothing %2/%3 "
-                                   "· Alt+Wheel")
-                        .arg(qRound(annotationSize_))
-                        .arg(freehandSmoothingLevel_)
-                        .arg(stroke::maximumSmoothingLevel);
-        } else {
-          tooltip = QStringLiteral("Size %1 · Scroll wheel")
-                        .arg(qRound(annotationSize_));
-        }
-        drawInstantTooltip(painter, rect(), button.rect, tooltip);
-        break;
-      }
-    }
   }
   drawMeasureBadge(painter, rect(), cursor_, measurementText());
 }
 
 bool CaptureEditor::shortcutGuideAllowed() const {
-  return !windowedPresentation_ && !scrollPanel_ && phase_ != Phase::Export;
+  return !scrollPanel_ && phase_ != Phase::Export;
 }
 
 void CaptureEditor::paintEvent(QPaintEvent *event) {

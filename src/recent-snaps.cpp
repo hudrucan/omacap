@@ -72,7 +72,7 @@ bool waitForPendingCaptures(const QDir &dir, const QString &id = {}) {
 } // namespace
 
 QString recentSnapsDirectory() {
-  QString root = qEnvironmentVariable("OMASNAP_RECENT_DIR");
+  QString root = qEnvironmentVariable("OMACAP_RECENT_DIR");
   if (root.isEmpty()) {
     const QString state =
         QStandardPaths::writableLocation(QStandardPaths::StateLocation);
@@ -156,7 +156,7 @@ RecentSnapWriter::~RecentSnapWriter() = default;
 
 bool RecentSnapWriter::record(const QImage &source, const OperationLog &log,
                               const QImage &rendered, QString &error,
-                              const RecentSnap *replaced) {
+                              const RecentSnap *replaced, RecentSnap *published) {
   StartupTimingScope timing("record recent capture");
   if (!error_.isEmpty()) {
     error = error_;
@@ -228,6 +228,8 @@ bool RecentSnapWriter::record(const QImage &source, const OperationLog &log,
   const QStringList names = thumbNamesNewestFirst(dir);
   for (qsizetype index = kRecentSnapLimit; index < names.size(); ++index)
     removeRecentSnap(snapForStem(dir, stemOf(names.at(index))));
+  if (published)
+    *published = snap;
   return true;
 }
 

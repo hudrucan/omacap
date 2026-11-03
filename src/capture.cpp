@@ -307,9 +307,9 @@ QString secureRuntimeDirectory() {
       QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
   if (runtime.isEmpty()) {
     runtime = QDir(QDir::tempPath())
-                  .filePath(QStringLiteral("omasnap-%1").arg(::getuid()));
+                  .filePath(QStringLiteral("omacap-%1").arg(::getuid()));
   } else {
-    runtime = QDir(runtime).filePath(QStringLiteral("omasnap"));
+    runtime = QDir(runtime).filePath(QStringLiteral("omacap"));
   }
   return ensurePrivateDirectory(runtime) ? QDir::cleanPath(runtime) : QString();
 }
@@ -409,12 +409,12 @@ QString runtimePath(const QString &name) {
 }
 
 QString suggestedScreenshotPathImpl(const QString &appSlug) {
-  // Precedence: OMASNAP_SCREENSHOT_DIR, then [output] directory in the
+  // Precedence: OMACAP_SCREENSHOT_DIR, then [output] directory in the
   // config, then ~/Pictures/Screenshots. The filename pattern comes from
   // [output] filename; its default keeps the date first so the folder always
   // sorts chronologically.
   const OutputConfig config = loadOutputConfig(defaultConfigPath());
-  QString root = qEnvironmentVariable("OMASNAP_SCREENSHOT_DIR");
+  QString root = qEnvironmentVariable("OMACAP_SCREENSHOT_DIR");
   if (root.isEmpty())
     root = config.directory;
   if (root.isEmpty())
@@ -1389,7 +1389,7 @@ bool captureMonitorPixels(const MonitorInfo &monitor, CaptureData &capture,
     startupTimingMark("hyprctl clients launched");
   }
 
-  const QString testCapture = qEnvironmentVariable("OMASNAP_TEST_CAPTURE");
+  const QString testCapture = qEnvironmentVariable("OMACAP_TEST_CAPTURE");
   if (!testCapture.isEmpty()) {
     if (!capture.source.load(testCapture)) {
       error = QStringLiteral("Screen capture failed: could not load test "
@@ -1764,7 +1764,10 @@ bool quickOutput(QImage image, QuickOutputMode mode, QString &error,
   if (mode == QuickOutputMode::Copy) {
     if (!copyImageToClipboard(image, error))
       return false;
-    sendCaptureNotification(QStringLiteral("Screenshot copied to clipboard"));
+    const auto recent = notifySavedCaptures() ? findRecentSnap(log.recentId)
+                                            : std::nullopt;
+    sendCaptureNotification(QStringLiteral("Screenshot copied to clipboard"),
+                            recent ? recent->thumbPath : QString(), log.recentId);
     return true;
   }
   const QString path = temporarySnapshotPath();
@@ -2627,7 +2630,7 @@ bool loadOperationLog(const QString &path, OperationLog &log, QString &error,
     error = QStringLiteral("Could not parse operation log: %1")
                 .arg(parseError.errorString());
     // Well-formed JSON that is not an object is another program's; text that
-    // does not parse may be omasnap's own log, cut short.
+    // does not parse may be omacap's own log, cut short.
     if (notOperationLog)
       *notOperationLog = parseError.error == QJsonParseError::NoError;
     return false;
@@ -2636,7 +2639,7 @@ bool loadOperationLog(const QString &path, OperationLog &log, QString &error,
   if (root.value(QStringLiteral("version")).toInt() != 1 ||
       !root.value(QStringLiteral("ops")).isArray()) {
     error = QStringLiteral("Unsupported operation log version");
-    // Every log omasnap writes has a numeric version and an ops array; an
+    // Every log omacap writes has a numeric version and an ops array; an
     // object without both is some other program's JSON sharing the name.
     if (notOperationLog)
       *notOperationLog = !root.value(QStringLiteral("version")).isDouble() ||
@@ -2677,7 +2680,7 @@ bool loadSidecarOperationLog(const QString &imagePath, OperationLog &log,
   // The sidecar is only a naming convention: report.png opened from a
   // download folder can sit beside another program's report.json. That file
   // is not this image's edit history, so open the image plain instead of
-  // refusing it. A damaged omasnap log is still an error.
+  // refusing it. A damaged omacap log is still an error.
   bool notOperationLog = false;
   OperationLog loaded;
   if (loadOperationLog(sidecar, loaded, error, &notOperationLog)) {
@@ -2686,7 +2689,7 @@ bool loadSidecarOperationLog(const QString &imagePath, OperationLog &log,
   }
   if (!notOperationLog)
     return false;
-  qWarning().noquote() << QStringLiteral("Ignoring %1: not an omasnap "
+  qWarning().noquote() << QStringLiteral("Ignoring %1: not an omacap "
                                          "operation log")
                               .arg(sidecar);
   error.clear();
@@ -2710,7 +2713,7 @@ QString recognizeText(const QImage &image, QString &error) {
     return {};
   }
 
-  QString languages = qEnvironmentVariable("OMASNAP_OCR_LANGS");
+  QString languages = qEnvironmentVariable("OMACAP_OCR_LANGS");
   if (languages.isEmpty())
     languages =
         qEnvironmentVariable("OMARCHY_OCR_LANGS", QStringLiteral("eng"));
@@ -2741,7 +2744,7 @@ QString recognizeText(const QImage &image, QString &error) {
 }
 
 bool notifySavedCaptures() {
-  return qEnvironmentVariableIntValue("OMASNAP_NOTIFY") == 1;
+  return qEnvironmentVariableIntValue("OMACAP_NOTIFY") == 1;
 }
 
 namespace {
@@ -2787,23 +2790,34 @@ QStringList captureNotificationArguments(
     return toast && text ? text(english) : english;
   };
   QStringList arguments{QStringLiteral("-g"), QStringLiteral(""),
-                        QStringLiteral("--app-name"), QStringLiteral("omasnap"),
+                        QStringLiteral("--app-name"), QStringLiteral("omacap"),
                         QStringLiteral("-t"),
                         toast ? QStringLiteral("7000") : QStringLiteral("4500"),
                         word(message)};
   if (imagePath.isEmpty())
     return arguments;
-  QString omasnap = QDir(QCoreApplication::applicationDirPath())
-                        .filePath(QStringLiteral("omasnap"));
-  if (!QFileInfo::exists(omasnap))
-    omasnap = QStringLiteral("omasnap");
+  QString omacap = QDir(QCoreApplication::applicationDirPath())
+                        .filePath(QStringLiteral("omacap"));
+  if (!QFileInfo::exists(omacap))
+    omacap = QStringLiteral("omacap");
   if (!toast) {
     // --exec consumes the rest of the command line as the click command's
     // argv, which omarchy-notification-send runs without shell parsing. It
     // must come last and be given as separate words, never one quoted string.
     arguments << QStringLiteral("Click to edit") << QStringLiteral("--image")
-              << imagePath << QStringLiteral("--exec") << omasnap
+              << imagePath << QStringLiteral("--exec") << omacap
               << QUrl::fromLocalFile(imagePath).toString(QUrl::FullyEncoded);
+    return arguments;
+  }
+  if (message == QStringLiteral("Screenshot copied to clipboard") &&
+      !recentId.isEmpty()) {
+    arguments << QStringLiteral("--image") << imagePath
+              << QStringLiteral("--action") << word(QStringLiteral("Edit"))
+              << omacap << QStringLiteral("--recent") << recentId
+              << QStringLiteral("--notify")
+              << QStringLiteral("--action") << word(QStringLiteral("Save"))
+              << omacap << QStringLiteral("--save-recent") << recentId
+              << QStringLiteral("--notify");
     return arguments;
   }
   const QSize size = QImageReader(imagePath).size();
@@ -2821,7 +2835,7 @@ QStringList captureNotificationArguments(
   arguments << QStringLiteral("--image") << imagePath
             << QStringLiteral("--action") << word(QStringLiteral("Open"))
             << QStringLiteral("xdg-open")
-            << QStringLiteral("--action") << word(QStringLiteral("Edit")) << omasnap;
+            << QStringLiteral("--action") << word(QStringLiteral("Edit")) << omacap;
   // Edit reopens the capture's layers and undo history from the recent
   // shelf; the saved image, appended by --with, is the fallback once the
   // shelf has dropped it.

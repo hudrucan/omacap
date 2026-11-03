@@ -1,0 +1,65 @@
+--- a/Service.qml
++++ b/Service.qml
+@@ -1635,8 +1635,19 @@
+               drawnHeight: service.at(model.key, "height")
+               // A hidden output collapses child visibility; its measurements
+               // must not overwrite the visible deck's heights.
+-              onTargetHeightChanged: if (surface.showingNotifications) service.noteHeight(model.key, targetHeight)
+-              Component.onCompleted: if (surface.showingNotifications) service.noteHeight(model.key, targetHeight)
++              // Publish after bindings settle: synchronous layout changes feed
++              // hover-driven action visibility back into its own measurement.
++              function reportHeight() {
++                if (surface.showingNotifications)
++                  service.noteHeight(model.key, targetHeight)
++              }
++              Timer {
++                id: heightReport
++                interval: 0
++                onTriggered: parent.reportHeight()
++              }
++              onTargetHeightChanged: heightReport.restart()
++              Component.onCompleted: heightReport.restart()
+ 
+               onExpired: service.closeToast(model.key, "expired")
+               onActivated: { service.stopKeyboard(); service.activate(model.key) }
+--- a/Toast.qml
++++ b/Toast.qml
+@@ -23,6 +23,8 @@
+   property bool sole: false                  // the only card on screen
+   property bool paused: false
+   property bool hovered: false
++  // Screenshot actions stay ready without hover changing the card geometry.
++  readonly property bool steadyControls: row.app === "omacap"
+   property bool selected: false              // the keyboard's card
+   property double now: Date.now()
+   property real cardWidth: Style.space(380)
+@@ -448,7 +450,7 @@
+                 anchors.centerIn: parent
+                 text: card.ago()
+                 color: card.dimColor
+-                opacity: card.hovered ? 0 : 1
++                opacity: card.hovered || card.steadyControls ? 0 : 1
+                 visible: opacity > 0.01
+                 font.family: Style.font.family
+                 font.pixelSize: Style.font.bodySmall
+@@ -461,8 +463,8 @@
+                 anchors.verticalCenter: parent.verticalCenter
+                 implicitWidth: closeMark.implicitWidth + Style.space(6)
+                 implicitHeight: closeMark.implicitHeight
+-                enabled: card.hovered
+-                opacity: card.hovered ? 1 : 0
++                enabled: card.hovered || card.steadyControls
++                opacity: enabled ? 1 : 0
+                 visible: opacity > 0.01
+                 readonly property bool hot: card.pointerOver(shut)
+                 Behavior on opacity { NumberAnimation { duration: card.fade; easing.type: Easing.InOutQuad } }
+@@ -529,7 +531,8 @@
+                 leftMargin: plate.borderLeft; rightMargin: plate.borderRight
+                 bottomMargin: plate.borderBottom }
+ 
+-      readonly property bool shown: card.allDeeds.length > 0 && (card.expanded ? card.hovered : card.place.front)
++      readonly property bool shown: card.allDeeds.length > 0 &&
++          (card.expanded ? card.steadyControls || card.hovered : card.place.front)
+       readonly property int columns: Math.max(1, Math.min(3, card.allDeeds.length))
+       readonly property int rows: Math.ceil(card.allDeeds.length / columns)
+       readonly property real rule: 1

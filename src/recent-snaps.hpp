@@ -30,7 +30,7 @@ constexpr int kRecentSnapLimit = 5;
 /// Longest edge of a stored thumbnail, in pixels.
 constexpr int kRecentThumbEdge = 320;
 
-/// `$OMASNAP_RECENT_DIR`, else `$XDG_STATE_HOME/omasnap/recent`. Created on
+/// `$OMACAP_RECENT_DIR`, else `$XDG_STATE_HOME/omacap/recent`. Created on
 /// demand; empty when it cannot be.
 [[nodiscard]] QString recentSnapsDirectory();
 
@@ -49,7 +49,8 @@ public:
   /// Publish before removing replaced, then prune while holding the shelf lock.
   [[nodiscard]] bool record(const QImage &source, const OperationLog &log,
                             const QImage &rendered, QString &error,
-                            const RecentSnap *replaced = nullptr);
+                            const RecentSnap *replaced = nullptr,
+                            RecentSnap *published = nullptr);
 
 private:
   QString recentId_;

@@ -124,12 +124,54 @@ QByteArray hyprctlOutput(const QStringList &arguments) {
   return process.readAllStandardOutput();
 }
 
+// Notification Save runs without a visible window and reuses the editor's
+// replay/render path so annotations and native pixels match Edit → Save.
+int saveRecentCapture(const QString &id) {
+  QString error;
+  const auto recent = findRecentSnap(id, &error);
+  QImage image;
+  OperationLog log;
+  QString saved;
+  if (!recent)
+    error = error.isEmpty() ? QStringLiteral("This capture is no longer available") : error;
+  else if (!image.load(recent->sourcePath))
+    error = QStringLiteral("Could not read the capture");
+  else if (!loadSidecarOperationLog(recent->sourcePath, log, error) ||
+           log.recentId != id) {
+    if (error.isEmpty())
+      error = QStringLiteral("This capture's edits are no longer available");
+  } else {
+    CaptureData capture;
+    describeFileCapture(capture, image, log);
+    CaptureEditor editor(std::move(capture), CaptureEditor::CaptureMode::File,
+                         QuickOutputMode::None, std::move(log));
+    editor.setSuppressSnapshots(true);
+    editor.waitForBackdrop();
+    const QString path = temporaryExportPath();
+    if (!path.isEmpty() && saveTemporarySnapshot(editor.renderCurrentOutput(), path, error))
+      saved = moveSnapshotToScreenshots(path, error);
+    if (saved.isEmpty()) {
+      QFile::remove(path);
+      if (error.isEmpty())
+        error = QStringLiteral("Could not save the capture");
+    }
+  }
+  if (saved.isEmpty()) {
+    qCritical().noquote() << error;
+    sendCaptureNotification(error);
+    return 1;
+  }
+  qInfo().noquote() << saved;
+  sendCaptureNotification(QStringLiteral("Screenshot saved"), saved, id);
+  return 0;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
   startupTimingMark("entered main");
-  QCoreApplication::setApplicationName(QStringLiteral("omasnap"));
-  QCoreApplication::setApplicationVersion(QString::fromLatin1(OMASNAP_VERSION));
+  QCoreApplication::setApplicationName(QStringLiteral("omacap"));
+  QCoreApplication::setApplicationVersion(QString::fromLatin1(OMACAP_VERSION));
   QCoreApplication::setOrganizationName(QStringLiteral("Omarchy"));
   // Resolve editor presentation before Qt consumes its own command-line flags.
   QStringList rawArguments;
@@ -138,6 +180,8 @@ int main(int argc, char **argv) {
   QCommandLineParser startupParser;
   configureCaptureCommandLine(startupParser, true);
   const bool startupParsed = startupParser.parse(rawArguments);
+  if (startupParsed && startupParser.isSet(QStringLiteral("save-recent")))
+    qputenv("QT_QPA_PLATFORM", "offscreen");
   const bool windowedEditorProcess = startupParsed &&
       windowedEditorRequested(startupParser, loadEditorWindowMode(defaultConfigPath()));
   // Window::get below gives only the capture surface a layer-shell role.
@@ -153,8 +197,9 @@ int main(int argc, char **argv) {
   // from the theme. `-platformtheme gtk3` on the command line still
   // overrides this for debugging.
   qputenv("QT_QPA_PLATFORMTHEME", "generic");
-  QGuiApplication::setDesktopFileName(QStringLiteral("omasnap"));
+  QGuiApplication::setDesktopFileName(QStringLiteral("omacap"));
   QApplication application(argc, argv);
+  QApplication::setWindowIcon(QIcon(QStringLiteral(":/assets/omacap.png")));
   startupTimingMark("QApplication constructed");
   // With the external desktop theme bypassed, Qt's default font would be
   // generic "Sans Serif 9"; pin what the theme used to install before any
@@ -173,7 +218,20 @@ int main(int argc, char **argv) {
   startupTimingMark("command line parsed");
   // The environment carries --notify to the pins and editors this starts.
   if (parser.isSet(QStringLiteral("notify")))
-    qputenv("OMASNAP_NOTIFY", "1");
+    qputenv("OMACAP_NOTIFY", "1");
+  if (parser.isSet(QStringLiteral("save-recent"))) {
+    const auto names = parser.optionNames();
+    if (!parser.positionalArguments().isEmpty() ||
+        std::ranges::any_of(names, [](const QString &name) {
+          return name != QStringLiteral("save-recent") && name != QStringLiteral("notify");
+        })) {
+      qCritical("--save-recent cannot be combined with another target or output");
+      return 2;
+    }
+    if (!loadCaptureFonts())
+      return 1;
+    return saveRecentCapture(parser.value(QStringLiteral("save-recent")));
+  }
   // After parsing: --help and --version exit() inside process(), which skips
   // ~QApplication's wait for the theme loader thread and crashes its teardown.
   initializeChromeTheme();
@@ -278,6 +336,11 @@ int main(int argc, char **argv) {
     reopenedRecent = findRecentSnap(parser.value(QStringLiteral("recent")));
     if (reopenedRecent)
       filePath = reopenedRecent->sourcePath;
+    else if (filePath.isEmpty()) {
+      sendCaptureNotification(QStringLiteral("This capture is no longer available"));
+      qCritical("This capture is no longer available");
+      return 1;
+    }
   }
   const bool editingImage = clipboardInput || !filePath.isEmpty();
   if (editingImage && quickOutputMode != QuickOutputMode::None) {
@@ -301,7 +364,7 @@ int main(int argc, char **argv) {
     return 1;
   }
   QLockFile instanceLock(
-      QDir(runtime).filePath(QStringLiteral("omasnap.instance")));
+      QDir(runtime).filePath(QStringLiteral("omacap.instance")));
   // Every capture, quick output included, dismisses a running overlay instead
   // of starting a second one: a late capture would otherwise photograph that overlay.
   // Editing an image always takes over so the requested editor can open.
@@ -310,7 +373,7 @@ int main(int argc, char **argv) {
                                  : InstanceMode::Capture);
   startupTimingMark("instance lock acquired");
   if (lockResult.signalledPid != 0)
-    qInfo().noquote() << QStringLiteral("Asked the running omasnap (pid %1) to "
+    qInfo().noquote() << QStringLiteral("Asked the running omacap (pid %1) to "
                                         "quit")
                              .arg(lockResult.signalledPid);
   if (!lockResult.proceed) {
@@ -361,6 +424,10 @@ int main(int argc, char **argv) {
       if (!loadSidecarOperationLog(localFile, restoredLog, error)) {
         qCritical().noquote()
             << QStringLiteral("Could not restore operation log: %1").arg(error);
+        return 1;
+      }
+      if (reopenedRecent && restoredLog.recentId != parser.value(QStringLiteral("recent"))) {
+        qCritical("This capture's edits are no longer available");
         return 1;
       }
       // Ownership of private handoff files ends once both source and log
@@ -449,8 +516,8 @@ int main(int argc, char **argv) {
     editor.setWindowedBackdropOpaque(
         loadEditorWindowBackdropOpaque(defaultConfigPath()));
     editor.setWindowTitle(
-        filePath.isEmpty() ? QStringLiteral("omasnap")
-                           : QStringLiteral("omasnap %1")
+        filePath.isEmpty() ? QStringLiteral("omacap")
+                           : QStringLiteral("omacap %1")
                                  .arg(QFileInfo(filePath).fileName()));
     // Size to the visible selection, not the pristine canvas: a handed-off
     // capture keeps its whole monitor underneath, but the window should hug
@@ -458,12 +525,7 @@ int main(int argc, char **argv) {
     const QSizeF selectionSize = editor.currentSelection().size();
     const QSize hugged =
         selectionSize.isEmpty() ? editingPreview : selectionSize.toSize();
-    // The guide band's height depends on how wide the card may be, so
-    // measure it at the width this window will have.
-    const int legendHeight =
-        hotkeyLegendAnchoredSize(editorHotkeyEntries(),
-                                 std::max(392, hugged.width() + 100))
-            .height();
+    const int legendHeight = 0;
     const QSize naturalSize =
         editorWindowSize(hugged, targetScreen->availableGeometry().size(),
                          legendHeight);
@@ -537,8 +599,8 @@ int main(int argc, char **argv) {
     rules->setFuture(QtConcurrent::run([floatingWindow] {
       hyprctlOutput({QStringLiteral("eval"), editorFloatRuleScript(floatingWindow)});
       hyprctlOutput({QStringLiteral("eval"),
-                     QStringLiteral("hl.window_rule({ name = \"omasnap-editor-opaque\", "
-                                    "match = { title = \"^omasnap( .+)?$\" }, opacity = 1 })")});
+                     QStringLiteral("hl.window_rule({ name = \"omacap-editor-opaque\", "
+                                    "match = { title = \"^omacap( .+)?$\" }, opacity = 1 })")});
     }));
     const int result = application.exec();
     // The closed editor may still be retaining its recent document. A fresh
@@ -556,7 +618,7 @@ int main(int argc, char **argv) {
     qCritical() << "Could not create capture overlay layer";
     return 1;
   }
-  layerWindow->setScope(QStringLiteral("omasnap"));
+  layerWindow->setScope(QStringLiteral("omacap"));
   layerWindow->setScreen(targetScreen);
   layerWindow->setLayer(LayerShellQt::Window::LayerOverlay);
   LayerShellQt::Window::Anchors anchors;

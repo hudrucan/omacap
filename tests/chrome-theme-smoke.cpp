@@ -221,7 +221,7 @@ bool runChromeThemeSmoke(const QString &outputRoot, QString &error) {
     if (button.isEmpty() || accentPixels < 15 ||
         !closeColor(pixelAt(ui, {20, 450}), chromeTheme().canvasSurface) ||
         !closeColor(pixelAt(ui, {button.center().x(), button.top() + 4}),
-                    chromeTheme().button) ||
+                    chromeTheme().surface) ||
         editor.renderCurrentOutput() != exported ||
         editor.operationIndex() != history) {
       error =

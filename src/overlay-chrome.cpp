@@ -12,7 +12,7 @@
 QFont chromeFont(int pixelSize, bool bold) {
   static const QFont base = [] {
     QFont font;
-    font.setFamilies({QStringLiteral("Adwaita Sans"),
+    font.setFamilies({QStringLiteral("Inter Display"), QStringLiteral("Adwaita Sans"),
                       QStringLiteral("Noto Sans")});
     return font;
   }();
@@ -24,7 +24,7 @@ QFont chromeFont(int pixelSize, bool bold) {
 
 QFont chromeDefaultFont() {
   QFont font;
-  font.setFamilies({QStringLiteral("Adwaita Sans"),
+  font.setFamilies({QStringLiteral("Inter Display"), QStringLiteral("Adwaita Sans"),
                     QStringLiteral("Noto Sans")});
   font.setPointSize(11);
   return font;

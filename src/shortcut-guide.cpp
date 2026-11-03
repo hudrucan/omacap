@@ -37,18 +37,18 @@ constexpr int kToggleHeight = 36;
 constexpr int kKeyGap = 12;
 constexpr int kMargin = 14;
 
-QString hiddenMarkerPath() {
+QString visibleMarkerPath() {
   const QString state =
       QStandardPaths::writableLocation(QStandardPaths::StateLocation);
   return state.isEmpty() ? QString()
-                         : QDir(state).filePath(QStringLiteral("shortcuts-hidden"));
+                         : QDir(state).filePath(QStringLiteral("shortcuts-visible"));
 }
 
 QFuture<void> savingChoice;
 } // namespace
 
 ShortcutGuide::ShortcutGuide(QWidget *parent)
-    : QWidget(parent), expanded_(!QFile::exists(hiddenMarkerPath())) {
+    : QWidget(parent), expanded_(QFile::exists(visibleMarkerPath())) {
   setObjectName(QStringLiteral("shortcut-guide"));
   setAccessibleName(QStringLiteral("Keyboard shortcuts"));
   setFocusPolicy(Qt::NoFocus);
@@ -84,15 +84,15 @@ void ShortcutGuide::setExpanded(bool expanded) {
   // The editor shows the card on its next paint; closing hides it now.
   if (!expanded_)
     hide();
-  if (const QString marker = hiddenMarkerPath(); !marker.isEmpty()) {
-    static std::atomic<bool> wantHidden;
+  if (const QString marker = visibleMarkerPath(); !marker.isEmpty()) {
+    static std::atomic<bool> wantVisible;
     static QMutex writing;
-    wantHidden = !expanded_;
+    wantVisible = expanded_;
     // Each write applies the latest choice, so quick toggles cannot land
     // out of order.
     savingChoice = QtConcurrent::run([marker] {
       const QMutexLocker lock(&writing);
-      if (!wantHidden) {
+      if (!wantVisible) {
         QFile::remove(marker);
       } else if (QDir().mkpath(QFileInfo(marker).path())) {
         QFile file(marker);

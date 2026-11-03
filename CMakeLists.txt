@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(omasnap VERSION 1.24.0 LANGUAGES C CXX)
+project(omacap VERSION 0.1.0 LANGUAGES C CXX)
 include(GNUInstallDirs)
 include(CTest)
 set(CMAKE_AUTOMOC ON)
@@ -33,7 +33,7 @@ foreach(PROTOCOL_XML IN LISTS PROTOCOL_XMLS)
   list(APPEND PROTOCOL_SOURCES "${PROTOCOL_HEADER}" "${PROTOCOL_CODE}")
 endforeach()
 
-add_library(omasnap-core STATIC
+add_library(omacap-core STATIC
   src/card-stack.hpp
   src/cli-path.cpp
   src/cli-path.hpp
@@ -91,7 +91,7 @@ add_library(omasnap-core STATIC
   src/editor-save-as.cpp
   src/editor.hpp
 )
-qt_add_resources(omasnap-core "capture-fonts"
+qt_add_resources(omacap-core "capture-fonts"
   PREFIX "/fonts"
   BASE "${CMAKE_CURRENT_SOURCE_DIR}/assets"
   FILES
@@ -100,8 +100,8 @@ qt_add_resources(omasnap-core "capture-fonts"
     "${CMAKE_CURRENT_SOURCE_DIR}/assets/InterDisplay-SemiBold.ttf"
 )
 
-# CXX-only: omasnap-core also compiles Wayland protocol .c files.
-target_precompile_headers(omasnap-core PRIVATE
+# CXX-only: omacap-core also compiles Wayland protocol .c files.
+target_precompile_headers(omacap-core PRIVATE
   "$<$<COMPILE_LANGUAGE:CXX>:<QtWidgets/QWidget$<ANGLE-R>>"
   "$<$<COMPILE_LANGUAGE:CXX>:<QtWidgets/QApplication$<ANGLE-R>>"
   "$<$<COMPILE_LANGUAGE:CXX>:<QtGui/QPainter$<ANGLE-R>>"
@@ -128,13 +128,13 @@ target_precompile_headers(omasnap-core PRIVATE
   "$<$<COMPILE_LANGUAGE:CXX>:<cmath$<ANGLE-R>>"
 )
 
-target_include_directories(omasnap-core PUBLIC
+target_include_directories(omacap-core PUBLIC
   "${CMAKE_CURRENT_BINARY_DIR}"
   "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
-target_compile_features(omasnap-core PUBLIC cxx_std_23)
-target_compile_options(omasnap-core PRIVATE -Wall -Wextra -Wpedantic)
-target_link_libraries(omasnap-core PUBLIC
+target_compile_features(omacap-core PUBLIC cxx_std_23)
+target_compile_options(omacap-core PRIVATE -Wall -Wextra -Wpedantic)
+target_link_libraries(omacap-core PUBLIC
   Qt6::Concurrent
   Qt6::Core
   Qt6::Gui
@@ -144,14 +144,18 @@ target_link_libraries(omasnap-core PUBLIC
   PkgConfig::Libdeflate
 )
 
-qt_add_executable(omasnap src/main.cpp src/pin.cpp src/pin.hpp)
-target_compile_options(omasnap PRIVATE -Wall -Wextra -Wpedantic)
-target_compile_definitions(omasnap PRIVATE OMASNAP_VERSION="${PROJECT_VERSION}")
-target_link_libraries(omasnap PRIVATE omasnap-core)
-target_precompile_headers(omasnap REUSE_FROM omasnap-core)
+qt_add_executable(omacap src/main.cpp src/pin.cpp src/pin.hpp)
+qt_add_resources(omacap "application-icon"
+  PREFIX "/"
+  FILES assets/omacap.png
+)
+target_compile_options(omacap PRIVATE -Wall -Wextra -Wpedantic)
+target_compile_definitions(omacap PRIVATE OMACAP_VERSION="${PROJECT_VERSION}")
+target_link_libraries(omacap PRIVATE omacap-core)
+target_precompile_headers(omacap REUSE_FROM omacap-core)
 
 if(BUILD_TESTING)
-qt_add_executable(omasnap-smoke
+qt_add_executable(omacap-smoke
   tests/scroll-focus-smoke.cpp
   tests/scroll-focus-smoke.hpp
   tests/chrome-theme-smoke.cpp
@@ -204,14 +208,14 @@ qt_add_executable(omasnap-smoke
   tests/save-as-smoke.cpp
   tests/save-as-smoke.hpp
 )
-target_include_directories(omasnap-smoke PRIVATE
+target_include_directories(omacap-smoke PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/tests"
 )
-target_compile_options(omasnap-smoke PRIVATE -Wall -Wextra -Wpedantic)
-target_link_libraries(omasnap-smoke PRIVATE omasnap-core Qt6::Test)
-target_precompile_headers(omasnap-smoke REUSE_FROM omasnap-core)
-add_test(NAME omasnap-smoke COMMAND omasnap-smoke)
-set_tests_properties(omasnap-smoke PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+target_compile_options(omacap-smoke PRIVATE -Wall -Wextra -Wpedantic)
+target_link_libraries(omacap-smoke PRIVATE omacap-core Qt6::Test)
+target_precompile_headers(omacap-smoke REUSE_FROM omacap-core)
+add_test(NAME omacap-smoke COMMAND omacap-smoke)
+set_tests_properties(omacap-smoke PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()
 
 qt_add_executable(stitch-replay
@@ -226,16 +230,19 @@ target_compile_features(stitch-replay PRIVATE cxx_std_23)
 target_compile_options(stitch-replay PRIVATE -Wall -Wextra -Wpedantic)
 target_link_libraries(stitch-replay PRIVATE Qt6::Core Qt6::Gui)
 
-install(TARGETS omasnap
+install(TARGETS omacap
   RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
 )
 install(FILES assets/OFL.txt
-  DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/omasnap"
+  DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/omacap"
   RENAME Neucha-OFL.txt
 )
 install(FILES assets/JetBrainsMono-OFL.txt assets/Inter-OFL.txt assets/Lucide-ISC.txt
-  DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/omasnap"
+  DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/omacap"
 )
-install(FILES omasnap.desktop
+install(FILES omacap.desktop
   DESTINATION "${CMAKE_INSTALL_DATADIR}/applications"
+)
+install(FILES assets/omacap.svg
+  DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps"
 )

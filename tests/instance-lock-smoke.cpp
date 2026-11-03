@@ -190,7 +190,7 @@ bool runStaleLockCheck(const QString &lockPath, QString &error) {
 }
 
 /** A lock left by a killed instance can name a pid that now belongs to
- *  another live omasnap process, such as a pin (pins never hold the lock).
+ *  another live omacap process, such as a pin (pins never hold the lock).
  *  That process must not be signalled: nobody holds the lock, so it is stale. */
 bool runReusedPidStaleLockCheck(const QString &root, QString &error) {
   const QString lockPath =
@@ -248,7 +248,7 @@ bool runReusedPidStaleLockCheck(const QString &root, QString &error) {
   const bool bystanderAlive = !bystander.waitForFinished(200) &&
                               bystander.state() == QProcess::Running;
   if (!bystanderAlive || result.signalledPid != 0) {
-    error = QStringLiteral("A stale lock's reused pid (another live omasnap "
+    error = QStringLiteral("A stale lock's reused pid (another live omacap "
                            "process) was sent SIGTERM");
     return false;
   }
@@ -273,7 +273,7 @@ bool runUnwritableLockCheck(const QString &root, QString &error) {
     error = QStringLiteral("Could not create the read-only lock directory");
     return false;
   }
-  QLockFile lock(QDir(locked).filePath(QStringLiteral("omasnap.instance")));
+  QLockFile lock(QDir(locked).filePath(QStringLiteral("omacap.instance")));
   const InstanceLockResult result =
       acquireInstanceLock(lock, InstanceMode::Capture);
   const bool ok = !result.proceed &&
@@ -299,7 +299,7 @@ bool runInstanceLockSmoke(QString &error) {
     return false;
   }
   const QString lockPath =
-      QDir(lockRoot.path()).filePath(QStringLiteral("omasnap.instance"));
+      QDir(lockRoot.path()).filePath(QStringLiteral("omacap.instance"));
   return runFileEditHandoverCheck(lockPath, error) &&
          runCaptureCancelCheck(lockPath, error) &&
          runStaleLockCheck(lockPath, error) &&

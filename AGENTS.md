@@ -1,6 +1,6 @@
-# Omasnap — Agent Guide
+# Omacap — Agent Guide
 
-Omasnap is a super fast, native Wayland screenshot and annotation overlay,
+Omacap is a super fast, native Wayland screenshot and annotation overlay,
 built for [Omarchy](https://omarchy.org) on Hyprland. It captures region,
 window, or full monitor (plus a scrolling-region mode that stitches a taller
 page into one image), then copies it and opens a floating compositor preview.
@@ -12,12 +12,18 @@ It opens an annotation editor on demand, with vector layers
 markers, text, OCR). Finished captures go to clipboard,
 `~/Pictures/Screenshots`, or a floating capture pinned across workspaces.
 
+Omacap is a UI-focused fork of https://github.com/omacom/omasnap.
+Keep its identity, config, runtime paths, locks, and desktop assets distinct from upstream.
+The PNG metadata key `Omasnap logical size` intentionally identifies the shared file format.
+The compact toolbar exposes secondary tools via its More menu; all existing tool shortcuts remain.
+Help is opt-in and may also be opened from More. Preserve the spacing between actions.
+
 ## Project principles
 
 Each of these has a longer writeup under `docs/` — read it before making a
 change that touches the principle, not just this summary.
 
-- **A specialized tool, not a general app.** Omasnap does one job — capture,
+- **A specialized tool, not a general app.** Omacap does one job — capture,
   annotate, output — and does it fast. It is not a drawing program, not a
   file manager, not a general Wayland utility. A feature that isn't in
   service of "screenshot, mark it up, send it somewhere" doesn't belong
@@ -62,14 +68,14 @@ change that touches the principle, not just this summary.
   instead of linking their equivalents in-process. Know this list before
   proposing an addition to it. See [docs/dependencies.md](docs/dependencies.md).
 - **Single small binary.** Everything (capture, editor, pin mode, scroll
-  capture) runs from the one `omasnap` executable. Every new dependency or
+  capture) runs from the one `omacap` executable. Every new dependency or
   vendored asset is weight every install carries.
 - **No backwards compatibility.** Break keybindings, CLI flags, file
   formats, or internals whenever it keeps the code simpler or the tool
   faster. Do not add compatibility shims, deprecation aliases, or migration
   code.
 - **Omarchy aesthetics.** `omarchy-notification-send` when available,
-  `OMASNAP_OCR_LANGS`/`OMARCHY_OCR_LANGS` fallback for OCR languages,
+  `OMACAP_OCR_LANGS`/`OMARCHY_OCR_LANGS` fallback for OCR languages,
   minimal vector-drawn icons (no icon-theme dependency), the bundled Neucha
   font. Chrome text uses `chromeFont()`/`chromeMonoFont()`
   (`src/overlay-chrome.cpp`), pinned in code, and `main()` installs
@@ -95,7 +101,7 @@ change that touches the principle, not just this summary.
 | `src/surface-capture.cpp` | In-process output/window capture via `ext-image-copy-capture` |
 | `src/cut.cpp/.hpp` | Cut-band tool: remove a strip and collapse the gap |
 | `src/recent-snaps.cpp/.hpp` | The recents shelf: shelving/reopening working documents |
-| `src/output-config.cpp/.hpp`, `src/palette-config.cpp/.hpp` | The optional `omasnap.conf` INI: output destination/filename, color presets |
+| `src/output-config.cpp/.hpp`, `src/palette-config.cpp/.hpp` | The optional `omacap.conf` INI: output destination/filename, color presets |
 | `src/pin.cpp/.hpp`, `src/pin-file.cpp/.hpp`, `src/pin-layout.cpp/.hpp` | Floating pinned captures, their files, and compositor placement |
 | `src/pin-expiry.cpp/.hpp` | Preview countdown, interaction pauses, and fade |
 | `src/icons.cpp/.hpp` | Vector icon renderer for toolbar and pin controls |
@@ -104,7 +110,7 @@ change that touches the principle, not just this summary.
 | `tests/*-smoke.cpp/.hpp` | Headless Qt Test coverage: offscreen region clicks, async capture, single-instance handover, stitching fixtures |
 | `docs/` | Longer writeups of the principles above — read before changing behavior they cover |
 | `install-omarchy` | Omarchy installer (deps via `omarchy-pkg-add`, installs to `~/.local`) |
-| `CMakeLists.txt` | Build definition; **the version lives here** (`project(omasnap VERSION ...)`) |
+| `CMakeLists.txt` | Build definition; **the version lives here** (`project(omacap VERSION ...)`) |
 
 ## Build and verify
 
@@ -134,7 +140,7 @@ wayland wayland-protocols libdeflate wl-clipboard xdg-utils tesseract tesseract-
 
 ## Release process
 
-1. Bump `project(omasnap VERSION ...)` in `CMakeLists.txt`.
+1. Bump `project(omacap VERSION ...)` in `CMakeLists.txt`.
    Move the `Unreleased` entries in `CHANGELOG.md` into that version's
    section, add its comparison link, and start a fresh `Unreleased` section.
    Update the Unreleased comparison link to compare the new tag with `main`.
@@ -143,10 +149,8 @@ wayland wayland-protocols libdeflate wl-clipboard xdg-utils tesseract tesseract-
    attaches the build artifact to the release automatically.
    Copy the new changelog section into the GitHub release notes so users
    can read the changes alongside the download.
-4. omarchy-pkgs picks up the new GitHub release on its own: the hourly
-   Sync Upstream run watches `omacom/omasnap` releases, bumps
-   `pkgbuilds/omasnap/` (`pkgver` and checksum), and auto-merges once the
-   build passes. No manual omarchy-pkgs PR is needed.
+4. Omacap has no published Omarchy package or upstream release automation.
+   Do not publish releases or modify Omarchy package repositories unless requested.
 
 See `README.md` for user-facing features, keybindings, and install
 instructions — keep it in sync when behavior changes.

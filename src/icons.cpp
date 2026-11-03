@@ -67,17 +67,26 @@ void drawToolbarIcon(QPainter &painter, const QRectF &bounds,
     return;
   }
 
-  constexpr qreal iconSize = 19.0;
+  constexpr qreal iconSize = 18.0;
   const qreal iconWidth = iconSize;
   const qreal iconHeight = iconSize;
   constexpr qreal logicalWidth = 24.0;
   painter.translate(bounds.center().x() - iconWidth / 2.0,
                     bounds.center().y() - iconHeight / 2.0);
   painter.scale(iconWidth / logicalWidth, iconHeight / 24.0);
-  painter.setPen(QPen(color, 2.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+  painter.setPen(QPen(color, 1.7, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
   painter.setBrush(Qt::NoBrush);
 
-  if (action == QStringLiteral("tool-select")) {
+  if (action == QStringLiteral("more")) {
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(color);
+    for (const qreal x : {5.0, 12.0, 19.0})
+      painter.drawEllipse(QPointF(x, 12), 1.6, 1.6);
+  } else if (action == QStringLiteral("help")) {
+    painter.drawEllipse(QRectF(3, 3, 18, 18));
+    painter.setFont(chromeFont(13, true));
+    painter.drawText(QRectF(3, 3, 18, 18), Qt::AlignCenter, QStringLiteral("?"));
+  } else if (action == QStringLiteral("tool-select")) {
     QPainterPath pointer;
     pointer.moveTo(5, 4);
     pointer.lineTo(17, 15);

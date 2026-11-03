@@ -164,7 +164,7 @@ enum class AnnotationLayer { Redaction, Default };
 [[nodiscard]] bool loadCaptureFonts();
 /** User-facing name for a bundled annotation typeface. */
 [[nodiscard]] QString annotationTextFontName(TextFont textFont);
-/** Bundled annotation font at Omasnap's logical text size. */
+/** Bundled annotation font at Omacap's logical text size. */
 [[nodiscard]] QFont annotationTextFont(qreal size,
                                        TextFont textFont = TextFont::Neucha);
 /**
@@ -264,10 +264,10 @@ private:
 [[nodiscard]] QString operationLogPath(const QString &imagePath);
 [[nodiscard]] bool saveOperationLog(const QString &path, const OperationLog &log,
                                     QString &error);
-/** `notOperationLog`, when given, is set when the file is not an omasnap
+/** `notOperationLog`, when given, is set when the file is not an omacap
  *  operation log at all: well-formed JSON that is not an object with a
  *  numeric version and an ops array. Text that does not parse, or a log of
- *  another version, leaves it false: it may be omasnap's own, cut short or
+ *  another version, leaves it false: it may be omacap's own, cut short or
  *  newer. */
 [[nodiscard]] bool loadOperationLog(const QString &path, OperationLog &log,
                                     QString &error,
@@ -396,7 +396,7 @@ QImage applyRedactionsScaled(QImage image, const QVector<Annotation> &redactions
                              const QRectF &selection, const QSizeF &targetSize);
 /** Creates or repairs a private directory owned by the current user. */
 [[nodiscard]] bool ensurePrivateDirectory(const QString &path);
-/** Returns Omasnap's private runtime directory, or empty on failure. */
+/** Returns Omacap's private runtime directory, or empty on failure. */
 [[nodiscard]] QString secureRuntimeDirectory();
 /**
  * Filename-safe token for a window class: lowercase, `[a-z0-9-]` only,

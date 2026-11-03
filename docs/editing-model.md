@@ -32,7 +32,8 @@ flatten or repaint the full capture. **Nothing is baked into the working
 image as you draw.** Add a rectangle, change your mind, delete it — the
 source pixels underneath were never touched.
 
-Completing a fresh capture copies it and shows a timed preview by default. The
+Completing a fresh capture copies it without exporting a file. `--notify` shows
+Save/Edit actions; otherwise it shows a timed preview. Autosave is off by default. The
 preview fades after 7 seconds of idle time; its pin button, Ctrl+P, or moving the
 preview keeps it, including a drag that only reorders the stack.
 `--editor overlay` or `--editor window` opens annotation before output; `E` or
@@ -76,10 +77,10 @@ Flattened PNG exports carry their complete logical dimensions in an
 `Omasnap logical size` text field, including crops, mats, and canvas growth.
 File and clipboard imports read it without needing the private sidecar;
 an editable document's operation log takes precedence. A same-name `.json`
-beside an opened image that is not shaped like an omasnap operation log (an
+beside an opened image that is not shaped like an omacap operation log (an
 object with a numeric `version` and an `ops` array) is another program's file:
 it is ignored, and the image opens without layers. One that does not parse as
-JSON, or is a log of another version, still fails, since it may be omasnap's
+JSON, or is a log of another version, still fails, since it may be omacap's
 own, cut short or newer. Untagged images retain
 their pixel dimensions: print DPI does not establish screenshot display scale.
 A tag or log whose logical size would mean a scale outside 1 to 4 on either

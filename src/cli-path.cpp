@@ -53,12 +53,12 @@ void configureCaptureCommandLine(QCommandLineParser &parser, bool beforeQt) {
       "Omarchy.\n"
       "\n"
       "With no target, drag for a region, click a window, or click open "
-      "space for\nthe full focused monitor. Captures save, copy to the clipboard, "
+      "space for\nthe full focused monitor. Captures copy to the clipboard, "
       "and show a\npreview for 7 seconds; use its pin button or Ctrl+P to keep "
       "it, or Edit to annotate.\n"
-      "Use --editor to edit before output.\n"
+      "Use Save to keep a file, or --editor to edit before output.\n"
       "\n"
-      "Only one capture overlay runs at a time. Starting omasnap again while "
+      "Only one capture overlay runs at a time. Starting omacap again while "
       "an\noverlay is open dismisses it: the running instance is asked to "
       "quit and the\nnew process exits without capturing, so the same hotkey "
       "opens and closes the\noverlay. Quick output (--copy, --save) dismisses "
@@ -92,14 +92,18 @@ void configureCaptureCommandLine(QCommandLineParser &parser, bool beforeQt) {
   parser.addOption(saveOption);
   const QCommandLineOption notifyOption(
       QStringLiteral("notify"),
-      QStringLiteral("Announce saved captures in a notification with Open and "
-                     "Edit buttons instead of a preview. Needs an "
+      QStringLiteral("Announce captures in a notification with Save/Edit for "
+                     "copied shots, or Open/Edit for saved shots. Needs an "
                      "omarchy-notification-send that takes --action."));
   parser.addOption(notifyOption);
   QCommandLineOption recentOption(QStringLiteral("recent"), QString(),
                                   QStringLiteral("id"));
   recentOption.setFlags(QCommandLineOption::HiddenFromHelp);
   parser.addOption(recentOption);
+  QCommandLineOption saveRecentOption(QStringLiteral("save-recent"), QString(),
+                                      QStringLiteral("id"));
+  saveRecentOption.setFlags(QCommandLineOption::HiddenFromHelp);
+  parser.addOption(saveRecentOption);
   const QCommandLineOption fileOption(
       QStringLiteral("file"),
       QStringLiteral("Open an existing image file in the annotation editor "
@@ -124,7 +128,7 @@ void configureCaptureCommandLine(QCommandLineParser &parser, bool beforeQt) {
       QStringLiteral("editor"),
       QStringLiteral("Edit before output, using overlay (fullscreen) or "
                      "window (a normal compositor window). Also configurable "
-                     "as [editor] mode in omasnap.conf; W switches a live "
+                     "as [editor] mode in omacap.conf; W switches a live "
                      "editor between the two."),
       QStringLiteral("mode"));
   parser.addOption(editorOption);

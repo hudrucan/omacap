@@ -7,7 +7,7 @@
 
 struct OutputConfig {
   /** Save fresh captures while retaining clipboard copy and timed preview. */
-  bool autosave = true;
+  bool autosave = false;
   /** Screenshot directory; empty means `~/Pictures/Screenshots`. */
   QString directory;
   /** Filename pattern without extension. Tokens: `{date}` (yyyy-MM-dd),
@@ -44,5 +44,5 @@ struct OutputConfig {
  *  solid backdrop instead of the overlay's see-through dim. */
 [[nodiscard]] bool loadEditorWindowBackdropOpaque(const QString &filePath);
 
-/** ~/.config/omasnap/omasnap.conf (XDG config location). */
+/** ~/.config/omacap/omacap.conf (XDG config location). */
 [[nodiscard]] QString defaultConfigPath();

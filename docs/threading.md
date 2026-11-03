@@ -1,6 +1,6 @@
 # Threading: the main thread never blocks
 
-Omasnap is a layer-shell overlay. The instant it stops painting — even for
+Omacap is a layer-shell overlay. The instant it stops painting — even for
 one dropped frame — it looks broken, because there is nothing else on
 screen to explain the freeze. So the rule is absolute: **the UI thread does
 capture, paint, and input handling, and nothing else.** Anything that can

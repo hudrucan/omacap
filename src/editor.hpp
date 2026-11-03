@@ -87,6 +87,8 @@ public:
    * Headless smoke suite only.
    */
   bool waitForSnapshot();
+  /** Drain background-image loading before a headless export. */
+  void waitForBackdrop();
   /**
    * Blocks until an in-flight export (finish) has completed, letting the
    * event loop run so completeFinish() can act. Headless smoke suite only.
@@ -498,12 +500,9 @@ private:
   [[nodiscard]] QRectF baseImageRect() const;
   /// Top of the toolbar row: just under the tab strip's fixed bottom edge,
   /// independent of the image, so the two can never overlap.
-  [[nodiscard]] QSizeF windowLegendSize() const;
   [[nodiscard]] QVector<QPair<QString, QString>> captureHotkeyEntries() const;
   [[nodiscard]] QString regionAspectLabel() const;
   void cycleRegionAspect(bool forward);
-  mutable int legendWidth_ = -1;
-  mutable QSizeF legendSize_;
   [[nodiscard]] qreal toolbarTop() const;
   /// How much vertical room the toolbar actually needs at the current window
   /// width — the image's top margin, not a guessed constant.
@@ -560,6 +559,7 @@ private:
   toolbarButtons(QVector<qreal> *groupDividers = nullptr,
                  bool includeSubmenus = true) const;
   [[nodiscard]] QRectF toolbarButtonRect(const QString &action) const;
+  [[nodiscard]] QRectF moreMenuRect() const;
   [[nodiscard]] QColor annotationColor() const;
   [[nodiscard]] QLineF creationSpan(const QPointF &rawEnd) const;
   [[nodiscard]] QPointF
@@ -854,6 +854,7 @@ private:
   std::optional<QString> pendingSelectedCapture_;
   bool busy_ = false;
   bool colorPaletteOpen_ = false;
+  bool moreMenuOpen_ = false;
   bool customColorPickerOpen_ = false;
   bool shapeMenuOpen_ = false;
   bool textSizeMenuOpen_ = false;

@@ -198,7 +198,7 @@ bool runPinLayoutSmoke(QString &error) {
   for (const auto &[arguments, pinned] : invocations) {
     QCommandLineParser parser;
     configureCaptureCommandLine(parser, true);
-    if (!parser.parse(QStringList{QStringLiteral("omasnap")} + arguments) ||
+    if (!parser.parse(QStringList{QStringLiteral("omacap")} + arguments) ||
         (parser.isSet(QStringLiteral("pin")) || parser.isSet(QStringLiteral("preview"))) != pinned) {
       error = QStringLiteral("Pin argv selected the wrong Wayland shell");
       return false;
