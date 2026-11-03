@@ -224,7 +224,6 @@ private:
     QRectF rect;
     QString action;
     QString label;
-    QString tooltip;
     QColor color;
   };
 
@@ -467,7 +466,6 @@ private:
   /// arming so its options are discoverable without trying them.
   [[nodiscard]] QString toolStatus() const;
   [[nodiscard]] QString highlighterStatus() const;
-  [[nodiscard]] QString highlighterTooltip() const;
   void activateHighlighter();
   [[nodiscard]] int annotationAt(const QPointF &point) const;
   /// Whether the armed tool picks a layer up rather than working over it.

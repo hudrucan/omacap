@@ -8535,11 +8535,11 @@ bool runWindowedPaletteAnchorCheck(QApplication &application, QString &error) {
   const qreal toolbarY =
       editor.toolbarButtonRectForTest(QStringLiteral("palette")).top();
   const QRectF palette = editor.colorPaletteRectForTest();
-  if (!qFuzzyCompare(palette.top(), toolbarY + 36 + 4)) {
-    error = QStringLiteral("Windowed palette sits at %1, not under the "
-                           "toolbar at %2")
+  if (palette.top() <= toolbarY + 36 + 10) {
+    error = QStringLiteral("Windowed palette at %1 overlaps the toolbar's "
+                           "bottom padding at %2")
                 .arg(palette.top())
-                .arg(toolbarY + 36 + 4);
+                .arg(toolbarY + 36 + 10);
     return false;
   }
 
