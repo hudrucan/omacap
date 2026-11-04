@@ -2751,11 +2751,9 @@ bool notifySavedCaptures() {
 namespace {
 
 // The --notify toast's wording lives in Omarchy's catalog under these keys.
-constexpr std::array<std::pair<const char *, const char *>, 4> kOmarchyText{{
+constexpr std::array<std::pair<const char *, const char *>, 2> kOmarchyText{{
     {"Screenshot saved", "capture.screenshotSaved"},
     {"Screenshot saved and copied", "capture.screenshotSavedCopied"},
-    {"Open", "capture.screenshotOpen"},
-    {"Edit", "capture.screenshotEdit"},
 }};
 
 /// Looks up the toast's wording with omarchy-i18n, all at once. English
@@ -2785,8 +2783,8 @@ std::function<QString(const QString &)> omarchyText() {
 
 QStringList captureNotificationArguments(
     const QString &message, const QString &imagePath, const QString &captureId,
-    bool actions, const std::function<QString(const QString &)> &text) {
-  const bool toast = actions && !imagePath.isEmpty();
+    bool localized, const std::function<QString(const QString &)> &text) {
+  const bool toast = localized && !imagePath.isEmpty();
   const auto word = [&](const QString &english) {
     return toast && text ? text(english) : english;
   };
@@ -2801,47 +2799,21 @@ QStringList captureNotificationArguments(
                         .filePath(QStringLiteral("omacap"));
   if (!QFileInfo::exists(omacap))
     omacap = QStringLiteral("omacap");
-  if (!toast) {
-    // --exec consumes the rest of the command line as the click command's
-    // argv, which omarchy-notification-send runs without shell parsing. It
-    // must come last and be given as separate words, never one quoted string.
-    arguments << QStringLiteral("Click to edit") << QStringLiteral("--image")
-              << imagePath << QStringLiteral("--exec") << omacap
+  // --exec consumes the remaining argv without shell parsing. No hover actions.
+  arguments << word(QStringLiteral("Click to edit")) << QStringLiteral("--image")
+            << imagePath << QStringLiteral("--exec") << omacap;
+  if (toast)
+    arguments << QStringLiteral("--notify");
+  arguments << QStringLiteral("--editor") << QStringLiteral("overlay");
+  if (captureId.isEmpty()) {
+    arguments << QStringLiteral("--file")
               << QUrl::fromLocalFile(imagePath).toString(QUrl::FullyEncoded);
-    return arguments;
-  }
-  if (message == QStringLiteral("Screenshot copied to clipboard") &&
-      !captureId.isEmpty()) {
-    arguments << QStringLiteral("--image") << imagePath
-              << QStringLiteral("--action") << word(QStringLiteral("Edit"))
-              << omacap << QStringLiteral("--capture-id") << captureId
-              << QStringLiteral("--notify")
-              << QStringLiteral("--action") << word(QStringLiteral("Save"))
-              << omacap << QStringLiteral("--save-capture") << captureId
-              << QStringLiteral("--notify");
-    return arguments;
-  }
-  const QSize size = QImageReader(imagePath).size();
-  const QFileInfo file(imagePath);
-  if (size.isValid() && file.exists()) {
-    const QLocale locale;
-    arguments << QStringLiteral("%1 × %2 · %3")
-                     .arg(locale.toString(size.width()),
-                          locale.toString(size.height()),
-                          locale.formattedDataSize(file.size(), 1,
-                                                   QLocale::DataSizeSIFormat));
-  }
-  // Each action's argv runs without shell parsing, with the --with words
-  // appended, so the path stays one word however it is spelled.
-  arguments << QStringLiteral("--image") << imagePath
-            << QStringLiteral("--action") << word(QStringLiteral("Open"))
-            << QStringLiteral("xdg-open")
-            << QStringLiteral("--action") << word(QStringLiteral("Edit")) << omacap;
-  // Edit reopens temporary layers; the saved PNG is its fallback after expiry.
-  if (!captureId.isEmpty())
+  } else {
     arguments << QStringLiteral("--capture-id") << captureId;
-  arguments << QStringLiteral("--with")
-            << imagePath;
+    if (message != QStringLiteral("Screenshot copied to clipboard"))
+      arguments << QStringLiteral("--file")
+                << QUrl::fromLocalFile(imagePath).toString(QUrl::FullyEncoded);
+  }
   return arguments;
 }
 

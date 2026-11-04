@@ -324,7 +324,9 @@ bool runSaveAsSmoke(QString &error) {
     const QString output = directory.filePath(QStringLiteral("notified.png"));
     editor.saveAsToPath(output);
     if (!waitUntil([&] { return !editor.busy_; }) || editor.isVisible() || previewed ||
-        toast.isEmpty() || toast.last() != output || QImage(output).isNull()) {
+        toast.isEmpty() || QUrl(toast.last()).toLocalFile() != output ||
+        toast.contains(QStringLiteral("--action")) ||
+        !toast.contains(QStringLiteral("--capture-id")) || QImage(output).isNull()) {
       error = QStringLiteral("Save As under --notify did not announce its file: %1")
                   .arg(toast.join(QStringLiteral(" | ")));
       return false;

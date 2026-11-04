@@ -2,7 +2,7 @@
 Type=Application
 Name=Omacap
 Comment=Capture, copy, and mark up screenshots
-Exec=omacap
+Exec=omacap --notify
 Icon=omacap
 Terminal=false
 Categories=Graphics;

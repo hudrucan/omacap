@@ -26,7 +26,7 @@
 
 - **Copy first.** Captures go straight to the system clipboard. Save a file only when you need one.
 - **Edit on demand.** A compact toolbar for arrows, drawing, shapes, text, and redaction. Extra tools live under **…**.
-- **Save deliberately.** Use **Save** on the notification or **… → Save** in the editor. Copy from the editor stays silent.
+- **Save deliberately.** Click the notification to open the fullscreen editor, then use **… → Save**. Copy from the editor stays silent.
 - **Keep native pixels.** Region, window, fullscreen, and scrolling captures preserve detail on scaled displays.
 
 Native **Wayland + Hyprland**. Follows your Omarchy theme, including live changes.
@@ -56,7 +56,7 @@ or run `omacap --notify` to use it without a binding.
 ## Use
 
 **Drag** an area, **click** a window, or click empty desktop space for the focused monitor.
-With `--notify`, the copied image has **Edit** and **Save** actions.
+With `--notify`, click the notification to open the fullscreen editor.
 Without it, a floating preview offers editing, copying, pinning, and file drag;
 it fades after 7 seconds of idle time. Hovering pauses the countdown.
 
@@ -166,9 +166,6 @@ Omacap is a UI-focused fork of [Omasnap](https://github.com/omacom/omasnap),
 starting at `6208946`. Original MIT copyright and bundled font/icon notices
 are retained. See the [changelog](CHANGELOG.md) and [font notices](assets/FONTS.md).
 The PNG metadata key `Omasnap logical size` is shared with upstream.
-
-An optional [notification hover patch](patches/omarchy-notifications-hover.patch)
-is included for a user-owned clone of Omarchy's notification plugin.
 
 Found a bug? [Open an issue](https://github.com/hudrucan/omacap/issues) with your
 Omarchy and Hyprland versions and steps to reproduce.

@@ -33,7 +33,7 @@ image as you draw.** Add a rectangle, change your mind, delete it — the
 source pixels underneath were never touched.
 
 Completing a fresh capture copies it without exporting a file. `--notify` shows
-Save/Edit actions; otherwise it shows a timed preview. Autosave is off by default. The
+one click-to-edit notification; otherwise it shows a timed preview. Autosave is off by default. The
 preview fades after 7 seconds of idle time; its pin button, Ctrl+P, or moving the
 preview keeps it, including a drag that only reorders the stack.
 `--editor overlay` or `--editor window` opens annotation before output; `E` or

@@ -4089,7 +4089,7 @@ void CaptureEditor::finish(OutputMode mode) {
       if (copiedNotice && result.error.isEmpty())
         sendCaptureNotification(
             handoffReady ? QStringLiteral("Screenshot copied to clipboard")
-                       : QStringLiteral("Screenshot copied; could not prepare Save/Edit"),
+                       : QStringLiteral("Screenshot copied; could not prepare editor"),
             handoffReady ? published.thumbPath : QString(), log.captureId, launcher);
       // A failed action handoff must not delete the recovery document.
       if (handoffReady && result.error.isEmpty()) {

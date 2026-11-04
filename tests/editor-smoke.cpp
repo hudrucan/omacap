@@ -2731,9 +2731,7 @@ bool runPostCaptureChecks(QString &error, bool autosave) {
       return false;
     }
   }
-  // Under --notify, a saved capture is announced with Open and Edit
-  // buttons for the saved PNG instead of a timed preview, both fresh and
-  // when saved from the editor.
+  // Notifications open the fullscreen editor, without hover action buttons.
   if (autosave) {
     qputenv("OMACAP_NOTIFY", "1");
     const auto restoreNotify = qScopeGuard([] { qunsetenv("OMACAP_NOTIFY"); });
@@ -2766,12 +2764,11 @@ bool runPostCaptureChecks(QString &error, bool autosave) {
       if (!fresh)
         QTest::keyClick(&editor, Qt::Key_S, Qt::ControlModifier);
       editor.waitForExport();
-      const QString saved = toast.isEmpty() ? QString() : toast.last();
+      const QString saved = toast.isEmpty() ? QString() : QUrl(toast.last()).toLocalFile();
       const auto removeSaved = qScopeGuard([&] { QFile::remove(saved); });
-      // Edit reopens the capture's layers from the recent shelf.
       const qsizetype recent = toast.indexOf(QStringLiteral("--capture-id"));
       if (editor.isVisible() || !pin.isEmpty() ||
-          !toast.contains(QStringLiteral("Open")) || recent < 0 ||
+          toast.contains(QStringLiteral("--action")) || recent < 0 ||
           !findCaptureHandoff(toast.value(recent + 1)) ||
           QImage(saved).convertToFormat(expected.format()) != expected) {
         error = QStringLiteral("--notify did not announce the saved %1 capture: %2")
@@ -2781,15 +2778,14 @@ bool runPostCaptureChecks(QString &error, bool autosave) {
       }
     }
   }
-  // Copied notifications export nothing until Save, and keep native pixels
-  // and editable layers even if the clipboard changes before the action.
+  // Opening a copied notification never saves or replaces a newer clipboard.
   if (!autosave) {
     qputenv("OMACAP_NOTIFY", "1");
     const auto restoreNotify = qScopeGuard([] { qunsetenv("OMACAP_NOTIFY"); });
     if (!executable(QStringLiteral("omarchy-i18n"),
                     QByteArrayLiteral("#!/bin/sh\nprintf '%s' \"$1\"\n")))
       return false;
-    for (const bool notificationSave : {true, false}) {
+    for (const bool notificationEdit : {true, false}) {
       const QTemporaryDir savedDirectory;
       qputenv("OMACAP_SCREENSHOT_DIR", savedDirectory.path().toUtf8());
       QStringList toast;
@@ -2810,11 +2806,11 @@ bool runPostCaptureChecks(QString &error, bool autosave) {
       fresh.waitForExport();
       const QString id = toast.value(toast.indexOf(QStringLiteral("--capture-id")) + 1);
       const auto recent = findCaptureHandoff(id);
-      if (!recent || !toast.contains(QStringLiteral("Save")) ||
-          !toast.contains(QStringLiteral("Edit")) || toast.contains(QStringLiteral("Open")) ||
+      if (!recent || !toast.contains(QStringLiteral("--exec")) ||
+          toast.contains(QStringLiteral("--action")) ||
           !QDir(savedDirectory.path()).entryList({QStringLiteral("*.png")}, QDir::Files).isEmpty() ||
           QImage(clipboard).convertToFormat(capture.source.format()) != fresh.renderCurrentOutput()) {
-        error = QStringLiteral("Copy-only capture saved a file or lost its Save/Edit actions");
+        error = QStringLiteral("Copy-only capture saved a file or lost its preview click");
         return false;
       }
       OperationLog log;
@@ -2833,10 +2829,10 @@ bool runPostCaptureChecks(QString &error, bool autosave) {
       QTest::mouseRelease(&editing, Qt::LeftButton, Qt::NoModifier,
                           (frame.topLeft() + QPointF(150, 90)).toPoint());
       const QImage expected = editing.renderCurrentOutput();
-      QTest::keyClick(&editing, notificationSave ? Qt::Key_Return : Qt::Key_S,
-                      notificationSave ? Qt::NoModifier : Qt::ControlModifier);
+      QTest::keyClick(&editing, notificationEdit ? Qt::Key_Return : Qt::Key_S,
+                      notificationEdit ? Qt::NoModifier : Qt::ControlModifier);
       editing.waitForExport();
-      if (notificationSave) {
+      if (notificationEdit) {
         if (notificationCount != 1 || editing.isVisible() ||
             QImage(clipboard).convertToFormat(expected.format()) != expected) {
           error = QStringLiteral("Editor Copy repeated the notification or lost clipboard pixels");
@@ -2849,23 +2845,22 @@ bool runPostCaptureChecks(QString &error, bool autosave) {
         QImage unrelated(3, 2, QImage::Format_RGB32); unrelated.fill(Qt::yellow);
         if (!unrelated.save(clipboard))
           return false;
-        const qsizetype action = toast.indexOf(QStringLiteral("Save"));
-        const qsizetype end = toast.indexOf(QStringLiteral("--action"), action);
-        QProcess save;
-        save.start(toast.value(action + 1),
-                   toast.mid(action + 2, (end < 0 ? toast.size() : end) - action - 2));
-        if (!save.waitForFinished(20000) || save.exitCode() != 0 || QImage(clipboard) != unrelated) {
-          error = QStringLiteral("Notification Save failed or replaced the clipboard: %1")
-                      .arg(QString::fromUtf8(save.readAllStandardError()));
+        const qsizetype action = toast.indexOf(QStringLiteral("--exec"));
+        QCommandLineParser click;
+        configureCaptureCommandLine(click);
+        if (!click.parse(toast.mid(action + 1)) ||
+            click.value(QStringLiteral("capture-id")) != id ||
+            click.value(QStringLiteral("editor")) != QStringLiteral("overlay") ||
+            windowedEditorRequested(click, true) || QImage(clipboard) != unrelated) {
+          error = QStringLiteral("Notification did not open its capture fullscreen or replaced the clipboard");
           return false;
         }
       }
       const QStringList files = QDir(savedDirectory.path()).entryList({QStringLiteral("*.png")}, QDir::Files);
-      // Silent editor Copy leaves the original notification's document alone.
-      const QImage savedExpected = notificationSave ? fresh.renderCurrentOutput() : expected;
-      if (files.size() != 1 ||
-          QImage(savedDirectory.filePath(files.first())).convertToFormat(savedExpected.format()) != savedExpected) {
-        error = QStringLiteral("Save lost the copied capture's native pixels or annotations");
+      if (notificationEdit ? !files.isEmpty()
+                           : files.size() != 1 ||
+                             QImage(savedDirectory.filePath(files.first())).convertToFormat(expected.format()) != expected) {
+        error = QStringLiteral("Opening the editor exported a file, or Save lost pixels");
         return false;
       }
     }
@@ -6298,8 +6293,8 @@ bool runOpLogSmoke(QApplication &application, QString &error) {
 /**
  * omarchy-notification-send treats everything after --exec as the click
  * command's argv and runs it without shell parsing. The saved-capture
- * notification must therefore put --exec last and pass the program and the
- * file URL as separate words; a quoted single string or a trailing -t would
+ * notification must therefore put --exec last and pass the program, editor
+ * flags, and file URL as separate words; a trailing -t would
  * make the click try to run a program that does not exist.
  */
 bool runNotificationArgvCheck(QString &error) {
@@ -6323,14 +6318,16 @@ bool runNotificationArgvCheck(QString &error) {
   const QStringList saved = captureNotificationArguments(
       QStringLiteral("Screenshot saved"), imagePath);
   const qsizetype exec = saved.indexOf(QStringLiteral("--exec"));
-  if (exec < 0 || saved.size() != exec + 3) {
-    error = QStringLiteral("--exec must be followed by exactly program and "
-                           "URL, got: %1")
+  if (exec < 0 || saved.size() != exec + 6 ||
+      saved.at(exec + 2) != QStringLiteral("--editor") ||
+      saved.at(exec + 3) != QStringLiteral("overlay") ||
+      saved.at(exec + 4) != QStringLiteral("--file")) {
+    error = QStringLiteral("--exec must carry a fullscreen editor and URL, got: %1")
                 .arg(saved.join(QStringLiteral(" | ")));
     return false;
   }
   const QString &program = saved.at(exec + 1);
-  const QString &url = saved.at(exec + 2);
+  const QString &url = saved.at(exec + 5);
   if (program.isEmpty() || program.contains(QStringLiteral("'")) ||
       program.contains(QStringLiteral(" ")) ||
       !program.endsWith(QStringLiteral("omacap"))) {
@@ -6355,8 +6352,7 @@ bool runNotificationArgvCheck(QString &error) {
     error = QStringLiteral("--image does not carry the saved path");
     return false;
   }
-  // Under --notify, Open and Edit are buttons that both receive the path
-  // through --with, which must therefore end the line as one word.
+  // --notify stays clickable without any hover action row.
   QTemporaryDir directory;
   const QString shotPath = directory.filePath(QStringLiteral("it's a shot 1.png"));
   QImage shot(1920, 1080, QImage::Format_RGB32);
@@ -6365,22 +6361,28 @@ bool runNotificationArgvCheck(QString &error) {
     return false;
   const QStringList toast = captureNotificationArguments(
       QStringLiteral("Screenshot saved"), shotPath, {}, true);
-  const qsizetype open = toast.indexOf(QStringLiteral("Open"));
-  const qsizetype edit = toast.indexOf(QStringLiteral("Edit"));
-  const qsizetype headline = toast.indexOf(QStringLiteral("Screenshot saved"));
-  if (toast.contains(QStringLiteral("--exec")) || open < 1 || edit < 1 ||
-      toast.at(open - 1) != QStringLiteral("--action") ||
-      toast.at(open + 1) != QStringLiteral("xdg-open") ||
-      toast.at(edit - 1) != QStringLiteral("--action") ||
-      !toast.at(edit + 1).endsWith(QStringLiteral("omacap")) ||
+  if (!toast.contains(QStringLiteral("--exec")) ||
+      !toast.contains(QStringLiteral("overlay")) ||
+      toast.contains(QStringLiteral("--action")) ||
+      toast.contains(QStringLiteral("--with")) ||
       toast.at(toast.indexOf(QStringLiteral("--image")) + 1) != shotPath ||
-      toast.at(toast.size() - 2) != QStringLiteral("--with") ||
-      toast.last() != shotPath ||
-      !toast.at(headline + 1).startsWith(QLocale().toString(1920) +
-                                         QStringLiteral(" × ") +
-                                         QLocale().toString(1080))) {
+      QUrl(toast.last()).toLocalFile() != shotPath) {
     error = QStringLiteral("--notify toast argv is wrong: %1")
                 .arg(toast.join(QStringLiteral(" | ")));
+    return false;
+  }
+  const QString id(32, QLatin1Char('a'));
+  const QStringList copied = captureNotificationArguments(
+      QStringLiteral("Screenshot copied to clipboard"), shotPath, id, true);
+  const QStringList editableSaved = captureNotificationArguments(
+      QStringLiteral("Screenshot saved"), shotPath, id, true);
+  if (copied.contains(QStringLiteral("--action")) ||
+      copied.contains(QStringLiteral("--file")) ||
+      copied.value(copied.indexOf(QStringLiteral("--capture-id")) + 1) != id ||
+      editableSaved.value(editableSaved.indexOf(QStringLiteral("--capture-id")) + 1) != id ||
+      !editableSaved.contains(QStringLiteral("--file")) ||
+      QUrl(editableSaved.last()).toLocalFile() != shotPath) {
+    error = QStringLiteral("Notification editor lost its capture or saved fallback");
     return false;
   }
   // Under --notify the wording comes from Omarchy's catalog, and an entry
@@ -6408,8 +6410,8 @@ bool runNotificationArgvCheck(QString &error) {
                             return true;
                           });
   if (!worded.contains(QStringLiteral("Skærmbillede gemt")) ||
-      !worded.contains(QStringLiteral("Åbn")) ||
-      !worded.contains(QStringLiteral("Edit"))) {
+      worded.contains(QStringLiteral("--action")) ||
+      !worded.contains(QStringLiteral("overlay"))) {
     error = QStringLiteral("--notify toast did not use Omarchy's wording: %1")
                 .arg(worded.join(QStringLiteral(" | ")));
     return false;

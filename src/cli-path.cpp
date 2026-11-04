@@ -92,18 +92,13 @@ void configureCaptureCommandLine(QCommandLineParser &parser, bool beforeQt) {
   parser.addOption(saveOption);
   const QCommandLineOption notifyOption(
       QStringLiteral("notify"),
-      QStringLiteral("Announce captures in a notification with Save/Edit for "
-                     "copied shots, or Open/Edit for saved shots. Needs an "
-                     "omarchy-notification-send that takes --action."));
+      QStringLiteral("Announce captures in a notification; click it to open "
+                     "the fullscreen editor."));
   parser.addOption(notifyOption);
   QCommandLineOption captureIdOption(QStringLiteral("capture-id"), QString(),
                                   QStringLiteral("id"));
   captureIdOption.setFlags(QCommandLineOption::HiddenFromHelp);
   parser.addOption(captureIdOption);
-  QCommandLineOption saveCaptureOption(QStringLiteral("save-capture"), QString(),
-                                      QStringLiteral("id"));
-  saveCaptureOption.setFlags(QCommandLineOption::HiddenFromHelp);
-  parser.addOption(saveCaptureOption);
   const QCommandLineOption fileOption(
       QStringLiteral("file"),
       QStringLiteral("Open an existing image file in the annotation editor "

@@ -2,6 +2,7 @@
 
 ## Omacap 0.1.0 (unreleased)
 
+- Open the fullscreen editor when a capture notification is clicked, without hover action buttons or a cloned notification plugin.
 - Fork Omasnap with a compact toolbar, a new icon, and separate app paths.
 - Copy captures by default; save only on request. Copy in the editor is silent.
 - Remove hover tooltips and leave space between the toolbar and its menus.

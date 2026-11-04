@@ -124,48 +124,6 @@ QByteArray hyprctlOutput(const QStringList &arguments) {
   return process.readAllStandardOutput();
 }
 
-// Notification Save runs without a visible window and reuses the editor's
-// replay/render path so annotations and native pixels match Edit → Save.
-int savePendingCapture(const QString &id) {
-  QString error;
-  const auto handoff = findCaptureHandoff(id, &error);
-  QImage image;
-  OperationLog log;
-  QString saved;
-  if (!handoff)
-    error = error.isEmpty() ? QStringLiteral("This capture is no longer available") : error;
-  else if (!image.load(handoff->sourcePath))
-    error = QStringLiteral("Could not read the capture");
-  else if (!loadSidecarOperationLog(handoff->sourcePath, log, error) ||
-           log.captureId != id) {
-    if (error.isEmpty())
-      error = QStringLiteral("This capture's edits are no longer available");
-  } else {
-    CaptureData capture;
-    describeFileCapture(capture, image, log);
-    CaptureEditor editor(std::move(capture), CaptureEditor::CaptureMode::File,
-                         QuickOutputMode::None, std::move(log));
-    editor.setSuppressSnapshots(true);
-    editor.waitForBackdrop();
-    const QString path = temporaryExportPath();
-    if (!path.isEmpty() && saveTemporarySnapshot(editor.renderCurrentOutput(), path, error))
-      saved = moveSnapshotToScreenshots(path, error);
-    if (saved.isEmpty()) {
-      QFile::remove(path);
-      if (error.isEmpty())
-        error = QStringLiteral("Could not save the capture");
-    }
-  }
-  if (saved.isEmpty()) {
-    qCritical().noquote() << error;
-    sendCaptureNotification(error);
-    return 1;
-  }
-  qInfo().noquote() << saved;
-  sendCaptureNotification(QStringLiteral("Screenshot saved"), saved, id);
-  return 0;
-}
-
 } // namespace
 
 int main(int argc, char **argv) {
@@ -180,8 +138,6 @@ int main(int argc, char **argv) {
   QCommandLineParser startupParser;
   configureCaptureCommandLine(startupParser, true);
   const bool startupParsed = startupParser.parse(rawArguments);
-  if (startupParsed && startupParser.isSet(QStringLiteral("save-capture")))
-    qputenv("QT_QPA_PLATFORM", "offscreen");
   const bool windowedEditorProcess = startupParsed &&
       windowedEditorRequested(startupParser, loadEditorWindowMode(defaultConfigPath()));
   // Window::get below gives only the capture surface a layer-shell role.
@@ -219,19 +175,6 @@ int main(int argc, char **argv) {
   // The environment carries --notify to the pins and editors this starts.
   if (parser.isSet(QStringLiteral("notify")))
     qputenv("OMACAP_NOTIFY", "1");
-  if (parser.isSet(QStringLiteral("save-capture"))) {
-    const auto names = parser.optionNames();
-    if (!parser.positionalArguments().isEmpty() ||
-        std::ranges::any_of(names, [](const QString &name) {
-          return name != QStringLiteral("save-capture") && name != QStringLiteral("notify");
-        })) {
-      qCritical("--save-capture cannot be combined with another target or output");
-      return 2;
-    }
-    if (!loadCaptureFonts())
-      return 1;
-    return savePendingCapture(parser.value(QStringLiteral("save-capture")));
-  }
   // After parsing: --help and --version exit() inside process(), which skips
   // ~QApplication's wait for the theme loader thread and crashes its teardown.
   initializeChromeTheme();
