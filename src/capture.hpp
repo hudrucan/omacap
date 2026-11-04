@@ -145,8 +145,8 @@ struct OperationLog {
   /// coordinates live in that space, so a source captured on a scaled
   /// monitor reopens at the same scale. Invalid when unknown.
   QSize previewSize;
-  /// Identity shared by a capture's recent entry, preview, and editor handoffs.
-  QString recentId = {};
+  /// Identity shared by a capture's notification, preview, and editor handoffs.
+  QString captureId = {};
   /// Durable PNG represented by a rendered preview. A returned pin document
   /// sets this only after its replacement saved preview has been launched.
   QString savedPath = {};
@@ -452,7 +452,7 @@ bool removeEditorHandoff(const QString &path, const QString &token);
  *  so editing the pin later reopens at the captured scale. */
 [[nodiscard]] bool savePinnedSnapshot(QImage image, const QString &path,
                                       const QSize &logicalSize, QString &error,
-                                      const QString &recentId = {},
+                                      const QString &captureId = {},
                                       const QString &savedPath = {});
 /** Saves and launches a private pin, optionally copying the same PNG first.
  *  Call on a worker: encoding, clipboard verification and process launch block.
@@ -461,7 +461,7 @@ bool removeEditorHandoff(const QString &path, const QString &token);
     const QImage &image, const QSize &logicalSize, bool copy,
     PinLifetime lifetime, QString &error,
     const std::function<bool(const QString &, const QStringList &)> &launcher = {},
-    const QString &recentId = {}, const QString &savedPath = {});
+    const QString &captureId = {}, const QString &savedPath = {});
 /** Atomically writes a lossless PNG into the private runtime directory. */
 [[nodiscard]] bool saveTemporarySnapshot(const QImage &image, QString path,
                                          QString &error);
@@ -474,7 +474,7 @@ bool removeEditorHandoff(const QString &path, const QString &token);
 /** Builds the omarchy-notification-send argv. With actions, a saved image
  *  becomes the toast's thumbnail, with its size as the description and Open
  *  and Edit buttons that each receive the image path through --with. Edit
- *  reopens recentId's layers when given, with the image as its fallback;
+ *  reopens captureId's layers when given, with the image as its fallback;
  *  text, when given, words the toast's headline and buttons. Without
  *  them, clicking the toast edits the image: --exec comes last, followed by
  *  the program and file URL as separate words, since it consumes the rest of
@@ -482,7 +482,7 @@ bool removeEditorHandoff(const QString &path, const QString &token);
 [[nodiscard]] QStringList
 captureNotificationArguments(
     const QString &message, const QString &imagePath = {},
-    const QString &recentId = {}, bool actions = false,
+    const QString &captureId = {}, bool actions = false,
     const std::function<QString(const QString &)> &text = {});
 /** Starts omarchy-notification-send through the launcher when one is given,
  *  with Open and Edit buttons under --notify, worded in Omarchy's language.
@@ -491,5 +491,5 @@ captureNotificationArguments(
  *  is set. */
 void sendCaptureNotification(
     const QString &message, const QString &imagePath = {},
-    const QString &recentId = {},
+    const QString &captureId = {},
     const std::function<bool(const QString &, const QStringList &)> &launcher = {});

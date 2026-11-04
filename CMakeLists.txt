@@ -57,8 +57,8 @@ add_library(omacap-core STATIC
   src/palette-config.hpp
   src/background-config.cpp
   src/background-config.hpp
-  src/recent-snaps.cpp
-  src/recent-snaps.hpp
+  src/capture-handoff.cpp
+  src/capture-handoff.hpp
   src/output-config.cpp
   src/output-config.hpp
   src/pin-expiry.cpp
@@ -161,8 +161,8 @@ qt_add_executable(omacap-smoke
   tests/chrome-theme-smoke.cpp
   tests/chrome-theme-smoke.hpp
   tests/editor-smoke.cpp
-  tests/recent-persistence-smoke.cpp
-  tests/recent-persistence-smoke.hpp
+  tests/capture-handoff-smoke.cpp
+  tests/capture-handoff-smoke.hpp
   tests/selection-repaint-smoke.cpp
   tests/selection-repaint-smoke.hpp
   tests/clipboard-smoke.cpp
@@ -182,8 +182,8 @@ qt_add_executable(omacap-smoke
   tests/stroke-smoothing-smoke.cpp
   tests/stroke-smoothing-smoke.hpp
   src/cli-path.cpp
-  src/recent-snaps.cpp
-  src/recent-snaps.hpp
+  src/capture-handoff.cpp
+  src/capture-handoff.hpp
   src/cli-path.hpp
   src/capture.cpp
   src/capture.hpp

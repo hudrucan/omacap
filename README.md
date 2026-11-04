@@ -15,8 +15,8 @@ Keyboard help opens with **?** or **… → Shortcuts**.
 Capture notifications offer **Save** and **Edit**. Edit keeps Save under **…**.
 
 Omacap has its own binary, icon, desktop entry, config, runtime locks, and
-recent history. It runs alongside Omasnap and the unrelated window-snapping
-plugin. Screen recording stays with Omarchy.
+temporary action data. It keeps no screenshot history and runs alongside
+Omasnap and the unrelated window-snapping plugin. Screen recording stays with Omarchy.
 
 ## Build and run
 
@@ -49,6 +49,7 @@ It does not change Hyprland bindings. `OMACAP_PREFIX` selects another prefix.
 
 Optional INI config: `~/.config/omacap/omacap.conf`. Captures go to
 `~/Pictures/Screenshots`; `OMACAP_SCREENSHOT_DIR` overrides the destination.
+Edit/Save notifications use temporary runtime data, separate from saved files.
 The upstream capture/editor flags remain available through `--help`.
 
 ## Checks and attribution

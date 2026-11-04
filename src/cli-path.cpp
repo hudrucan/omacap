@@ -96,14 +96,14 @@ void configureCaptureCommandLine(QCommandLineParser &parser, bool beforeQt) {
                      "copied shots, or Open/Edit for saved shots. Needs an "
                      "omarchy-notification-send that takes --action."));
   parser.addOption(notifyOption);
-  QCommandLineOption recentOption(QStringLiteral("recent"), QString(),
+  QCommandLineOption captureIdOption(QStringLiteral("capture-id"), QString(),
                                   QStringLiteral("id"));
-  recentOption.setFlags(QCommandLineOption::HiddenFromHelp);
-  parser.addOption(recentOption);
-  QCommandLineOption saveRecentOption(QStringLiteral("save-recent"), QString(),
+  captureIdOption.setFlags(QCommandLineOption::HiddenFromHelp);
+  parser.addOption(captureIdOption);
+  QCommandLineOption saveCaptureOption(QStringLiteral("save-capture"), QString(),
                                       QStringLiteral("id"));
-  saveRecentOption.setFlags(QCommandLineOption::HiddenFromHelp);
-  parser.addOption(saveRecentOption);
+  saveCaptureOption.setFlags(QCommandLineOption::HiddenFromHelp);
+  parser.addOption(saveCaptureOption);
   const QCommandLineOption fileOption(
       QStringLiteral("file"),
       QStringLiteral("Open an existing image file in the annotation editor "

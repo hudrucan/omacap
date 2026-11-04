@@ -10,7 +10,7 @@
 #include "overlay-dismissal.hpp"
 #include "pin.hpp"
 #include "pin-file.hpp"
-#include "recent-snaps.hpp"
+#include "capture-handoff.hpp"
 #include "shortcut-guide.hpp"
 #include "startup-timing.hpp"
 
@@ -126,18 +126,18 @@ QByteArray hyprctlOutput(const QStringList &arguments) {
 
 // Notification Save runs without a visible window and reuses the editor's
 // replay/render path so annotations and native pixels match Edit → Save.
-int saveRecentCapture(const QString &id) {
+int savePendingCapture(const QString &id) {
   QString error;
-  const auto recent = findRecentSnap(id, &error);
+  const auto handoff = findCaptureHandoff(id, &error);
   QImage image;
   OperationLog log;
   QString saved;
-  if (!recent)
+  if (!handoff)
     error = error.isEmpty() ? QStringLiteral("This capture is no longer available") : error;
-  else if (!image.load(recent->sourcePath))
+  else if (!image.load(handoff->sourcePath))
     error = QStringLiteral("Could not read the capture");
-  else if (!loadSidecarOperationLog(recent->sourcePath, log, error) ||
-           log.recentId != id) {
+  else if (!loadSidecarOperationLog(handoff->sourcePath, log, error) ||
+           log.captureId != id) {
     if (error.isEmpty())
       error = QStringLiteral("This capture's edits are no longer available");
   } else {
@@ -180,7 +180,7 @@ int main(int argc, char **argv) {
   QCommandLineParser startupParser;
   configureCaptureCommandLine(startupParser, true);
   const bool startupParsed = startupParser.parse(rawArguments);
-  if (startupParsed && startupParser.isSet(QStringLiteral("save-recent")))
+  if (startupParsed && startupParser.isSet(QStringLiteral("save-capture")))
     qputenv("QT_QPA_PLATFORM", "offscreen");
   const bool windowedEditorProcess = startupParsed &&
       windowedEditorRequested(startupParser, loadEditorWindowMode(defaultConfigPath()));
@@ -219,18 +219,18 @@ int main(int argc, char **argv) {
   // The environment carries --notify to the pins and editors this starts.
   if (parser.isSet(QStringLiteral("notify")))
     qputenv("OMACAP_NOTIFY", "1");
-  if (parser.isSet(QStringLiteral("save-recent"))) {
+  if (parser.isSet(QStringLiteral("save-capture"))) {
     const auto names = parser.optionNames();
     if (!parser.positionalArguments().isEmpty() ||
         std::ranges::any_of(names, [](const QString &name) {
-          return name != QStringLiteral("save-recent") && name != QStringLiteral("notify");
+          return name != QStringLiteral("save-capture") && name != QStringLiteral("notify");
         })) {
-      qCritical("--save-recent cannot be combined with another target or output");
+      qCritical("--save-capture cannot be combined with another target or output");
       return 2;
     }
     if (!loadCaptureFonts())
       return 1;
-    return saveRecentCapture(parser.value(QStringLiteral("save-recent")));
+    return savePendingCapture(parser.value(QStringLiteral("save-capture")));
   }
   // After parsing: --help and --version exit() inside process(), which skips
   // ~QApplication's wait for the theme loader thread and crashes its teardown.
@@ -328,14 +328,12 @@ int main(int argc, char **argv) {
     qCritical() << "Clipboard input cannot be combined with another target";
     return 2;
   }
-  // A --notify toast's Edit reopens its capture's layers from the recent
-  // shelf, like the overlay's recent cards; the image given alongside is the
-  // fallback once the shelf has dropped that capture.
-  std::optional<RecentSnap> reopenedRecent;
-  if (parser.isSet(QStringLiteral("recent"))) {
-    reopenedRecent = findRecentSnap(parser.value(QStringLiteral("recent")));
-    if (reopenedRecent)
-      filePath = reopenedRecent->sourcePath;
+  // Notifications reopen only their temporary action document, never a history list.
+  std::optional<CaptureHandoff> reopenedHandoff;
+  if (parser.isSet(QStringLiteral("capture-id"))) {
+    reopenedHandoff = findCaptureHandoff(parser.value(QStringLiteral("capture-id")));
+    if (reopenedHandoff)
+      filePath = reopenedHandoff->sourcePath;
     else if (filePath.isEmpty()) {
       sendCaptureNotification(QStringLiteral("This capture is no longer available"));
       qCritical("This capture is no longer available");
@@ -426,7 +424,7 @@ int main(int argc, char **argv) {
             << QStringLiteral("Could not restore operation log: %1").arg(error);
         return 1;
       }
-      if (reopenedRecent && restoredLog.recentId != parser.value(QStringLiteral("recent"))) {
+      if (reopenedHandoff && restoredLog.captureId != parser.value(QStringLiteral("capture-id"))) {
         qCritical("This capture's edits are no longer available");
         return 1;
       }
@@ -504,8 +502,6 @@ int main(int argc, char **argv) {
   CaptureEditor editor(std::move(capture), captureMode, quickOutputMode,
                        restoredLog, nullptr, editorWindowMode && !editingImage);
   editor.setPinDocument(std::move(pinDocument));
-  if (reopenedRecent)
-    editor.setEditingRecent(std::move(*reopenedRecent));
   startupTimingMark("CaptureEditor constructed");
   editor.setScreen(targetScreen);
   if (windowedEditorProcess && editingImage) {
@@ -603,7 +599,7 @@ int main(int argc, char **argv) {
                                     "match = { title = \"^omacap( .+)?$\" }, opacity = 1 })")});
     }));
     const int result = application.exec();
-    // The closed editor may still be retaining its recent document. A fresh
+    // The closed editor may still be retaining its handoff document. A fresh
     // capture must not mistake that background save for an active overlay.
     editor.hide();
     ShortcutGuide::finishSavingChoice();

@@ -15,10 +15,10 @@ that the log merely mirrors — the log **is** the model.
 This is why undo is exact and unlimited within a session, why the crash
 recovery snapshot (`snapshotWatcher_`) can save just the source image plus
 the JSON-serialized log and reconstruct everything on reopen (see
-`recent-snaps.hpp`), and why new annotation kinds or edit actions must be
+`capture-handoff.hpp`), and why new annotation kinds or edit actions must be
 expressed as a new `Operation::Type` (or a field on `Annotation`) rather
 than a side channel of editor state — anything that bypasses the log breaks
-undo, crash recovery, and the recents shelf simultaneously.
+undo, crash recovery, and notification/preview editing simultaneously.
 
 ## Rendering is a pure function of the log, until you export
 
@@ -49,15 +49,12 @@ stack. Its private metadata points to the saved PNG for Reveal and Copy path;
 expiry removes only the runtime copy. An originating preview or pin closes once
 its replacement is ready. Cancelling the chooser or failing to save keeps editing open.
 
-Every completed capture also keeps a private source, operation log, and rendered
-thumbnail in the five-entry recents shelf, including untouched timed previews,
-quick output, explicit pins, and editors dismissed with `Esc`. Preview expiry
-only removes the runtime preview. The next overlay can reopen its recent card
-directly for annotation. A capture identity survives preview editing and editor
-handoffs so completing it again updates one entry and retains editable layers.
-Shelf writes, thumbnail rendering, and pruning continue on the completion worker
-after the preview appears and the overlay closes. Immediately reopening a preview
-waits for its pending document on a worker so the original layers remain editable.
+Notifications and pinned previews use a temporary source, operation log, and
+thumbnail under the private runtime directory. There is no screenshot history,
+and closing a plain editor or using Copy does not retain another capture.
+Edit waits for any pending handoff write so native pixels and layers survive.
+Expired action documents are pruned after 15 minutes when new data is published;
+the runtime directory is also cleared with the login session.
 
 Opening a pin for annotation leaves its compositor window in place. A private
 copy retains the pristine source and operation log; `Esc` commits any text draft,

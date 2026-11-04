@@ -3,7 +3,7 @@
 #include "capture.hpp"
 #include "overlay-chrome.hpp"
 #include "pin.hpp"
-#include "recent-snaps.hpp"
+#include "capture-handoff.hpp"
 #include "pin-file.hpp"
 
 #include <LayerShellQt/Window>
@@ -195,9 +195,9 @@ void CaptureEditor::saveAsToPath(const QString &path) {
        background = backgroundStyle_, shadow = imageShadow_,
        boundary = canvasBoundaryMode_, backdrop = customBackdrop_,
        source = pristineSource_, log = currentOperationLog(),
-       previous = editingRecent_, document = pinDocument_,
+       document = pinDocument_,
        launcher = processLauncher_, path](QPromise<QString> &completion) {
-    RecentSnapWriter recent(log.recentId);
+    CaptureHandoffWriter handoff(log.captureId);
     const QImage image = renderCapture(capture, selection, annotations,
                                        background, shadow, boundary, backdrop);
     QString error;
@@ -206,10 +206,10 @@ void CaptureEditor::saveAsToPath(const QString &path) {
       bool announced = true;
       if (notifySavedCaptures()) {
         sendCaptureNotification(QStringLiteral("Screenshot saved"), path,
-                                log.recentId, launcher);
+                                log.captureId, launcher);
       } else if (launchPinnedCapture(
                      image, renderedCaptureLogicalSize(capture, image.size()), false,
-                     PinLifetime::Timed, error, launcher, log.recentId, path)
+                     PinLifetime::Timed, error, launcher, log.captureId, path)
                      .isEmpty()) {
         announced = false;
         error = QStringLiteral("Saved to %1, but could not show its preview: %2")
@@ -221,10 +221,9 @@ void CaptureEditor::saveAsToPath(const QString &path) {
     // Close as soon as the file is announced; retain the editable source and
     // log afterward, just as other completed captures do.
     completion.addResult(error);
-    QString recentError;
-    if (!recent.record(source, log, image, recentError,
-                       previous ? &*previous : nullptr))
-      qWarning("Could not retain Save As capture: %s", qPrintable(recentError));
+    QString handoffError;
+    if (!handoff.record(source, log, image, handoffError))
+      qWarning("Could not retain Save As capture: %s", qPrintable(handoffError));
   });
   watcher->setFuture(saveAsFuture_);
 }

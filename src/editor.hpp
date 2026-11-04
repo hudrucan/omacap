@@ -6,7 +6,7 @@
 #include "cut.hpp"
 #include "overlay-chrome.hpp"
 #include "palette-config.hpp"
-#include "recent-snaps.hpp"
+#include "capture-handoff.hpp"
 #include "stroke-smoothing.hpp"
 
 #include <QElapsedTimer>
@@ -94,11 +94,6 @@ public:
    * event loop run so completeFinish() can act. Headless smoke suite only.
    */
   void waitForExport();
-  /**
-   * Blocks until an in-flight recents-shelf reopen has completed, letting
-   * the event loop run. Headless smoke suite only.
-   */
-  void waitForReopen();
   /** Renders the current selection and layer data for headless verification. */
   [[nodiscard]] QImage renderCurrentOutput() const;
   /**
@@ -141,8 +136,6 @@ public:
   void setPinDocument(std::shared_ptr<PinSnapshotFile> document) {
     pinDocument_ = std::move(document);
   }
-  /// Saving updates this recent capture in place instead of adding another.
-  void setEditingRecent(RecentSnap recent) { editingRecent_ = std::move(recent); }
 
   /**
    * Disables working-snapshot persistence. The hidden editor behind instant
@@ -241,16 +234,6 @@ private:
     bool snapshotsSuppressed = false;
     bool savedPreview = false;
   };
-  /// What reopening a shelved capture reads off disk: the full-resolution
-  /// source plus its operation log. Loaded on the worker pool, not the UI
-  /// thread, since a shelved stitched capture can be tens of megapixels.
-  struct ReopenResult {
-    RecentSnap recent;
-    QImage image;
-    OperationLog log;
-    QString error;
-  };
-
   struct EditState {
     QVector<Annotation> annotations;
     BackgroundStyle backgroundStyle = BackgroundStyle::None;
@@ -366,16 +349,6 @@ public:
   }
   [[nodiscard]] QRectF scrollPillRectForTest() const {
     return scrollPillRect();
-  }
-  /// Blocks until the shelf has been listed; false when it is empty.
-  bool waitForRecents();
-  /// Whether the shelf is fanned out. Test accessor.
-  [[nodiscard]] bool recentsOpenForTest() const { return recentsOpen_; }
-  /// Widget rect of shelf card `index` at its settled position (fanned when
-  /// open, stacked when not), or null. Test accessor.
-  [[nodiscard]] QRectF recentCardRectForTest(int index) const;
-  [[nodiscard]] int recentCountForTest() const {
-    return static_cast<int>(recents_.size());
   }
   /// Current status line. Test accessor.
   [[nodiscard]] QString statusForTest() const { return status_; }
@@ -582,7 +555,7 @@ private:
   /// Back from the editor to the select phase: the op log is dropped and the
   /// frozen screen is offered again for a new region or window.
   void returnToSelect();
-  void dismissEditor(bool remember = true);
+  void dismissEditor();
   [[nodiscard]] OperationLog currentOperationLog() const;
   void cancelEditInteraction();
   /// Scroll capture takes over the surface with `region` drawn.
@@ -604,22 +577,6 @@ private:
   /// Small pill under the image in the edit phase offering scroll capture of
   /// the drawn region; null when not offered.
   [[nodiscard]] QRectF scrollPillRect() const;
-  /// The shelf of earlier captures along the right edge of the select
-  /// overlay: a stack of small cards that fans out under the pointer, each
-  /// reopening its capture in place of taking a new one.
-  struct RecentCard {
-    QRectF rect;
-    qreal rotation = 0.0;
-  };
-  void loadRecents();
-  [[nodiscard]] QVector<RecentCard> recentCards(qreal fan) const;
-  [[nodiscard]] QRectF recentsHotZone() const;
-  [[nodiscard]] int recentAt(const QPointF &position) const;
-  void setRecentsOpen(bool open);
-  void trackRecentsHover();
-  void paintRecents(QPainter &painter);
-  void reopenRecent(int index);
-  void completeReopenRecent(const ReopenResult &result);
   void completeBackdropLoad();
   void seedConfiguredBackground(BackgroundStyle style);
   void duplicateSelectedAnnotation();
@@ -768,18 +725,7 @@ private:
   CaptureMode captureMode_ = CaptureMode::Region;
   /// Coordinate space used by the capture being edited.
   CaptureMode editedMode_ = CaptureMode::Region;
-  std::optional<RecentSnap> editingRecent_;
-  QString recentId_;
-  QVector<RecentSnap> recents_;
-  QFutureWatcher<QVector<RecentSnap>> recentsWatcher_;
-  bool recentsLoading_ = false;
-  bool recentsOpen_ = false;
-  int hoveredRecent_ = -1;
-  /// 0 = stacked, 1 = fanned; eased between the two by recentsAnimTimer_.
-  qreal recentsFan_ = 0.0;
-  qreal recentsFanFrom_ = 0.0;
-  QElapsedTimer recentsAnimClock_;
-  QTimer recentsAnimTimer_;
+  QString captureId_;
   QRectF selection_;
   // Annotation coordinates stay anchored to the source frame at 0,0. This
   // derived rect expands around them without translating either the source or
@@ -991,9 +937,7 @@ private:
   QString saveAsDirectory_;
   QFuture<QString> saveAsFuture_;
   QFuture<QString> dismissFuture_;
-  QFutureWatcher<ReopenResult> reopenWatcher_;
   QFutureWatcher<QImage> backdropWatcher_;
-  bool reopenPending_ = false;
   /// The region being read (annotation coordinates). While tesseract runs a
   /// scan band sweeps it; once done the recognized text sits over it for a
   /// few seconds (or until the next click/key) so you can see what was copied.

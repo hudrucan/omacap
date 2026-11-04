@@ -5,7 +5,7 @@
 #include "pin-file.hpp"
 #include "pin-layout.hpp"
 #include "png.hpp"
-#include "recent-snaps.hpp"
+#include "capture-handoff.hpp"
 #include "stroke-smoothing.hpp"
 #include "output-config.hpp"
 #include "startup-timing.hpp"
@@ -1756,18 +1756,19 @@ bool quickOutput(QImage image, QuickOutputMode mode, QString &error,
   }
   OperationLog log;
   log.previewSize = logicalSize.isEmpty() ? image.size() : logicalSize;
-  log.recentId = QUuid::createUuid().toString(QUuid::Id128);
+  log.captureId = QUuid::createUuid().toString(QUuid::Id128);
   setPngLogicalSize(image, log.previewSize);
-  QString recentError;
-  if (!recordRecentSnap(image, log, image, recentError))
-    qWarning().noquote() << recentError;
+  QString handoffError;
+  if (notifySavedCaptures() &&
+      !recordCaptureHandoff(image, log, image, handoffError))
+    qWarning().noquote() << handoffError;
   if (mode == QuickOutputMode::Copy) {
     if (!copyImageToClipboard(image, error))
       return false;
-    const auto recent = notifySavedCaptures() ? findRecentSnap(log.recentId)
+    const auto handoff = notifySavedCaptures() ? findCaptureHandoff(log.captureId)
                                             : std::nullopt;
     sendCaptureNotification(QStringLiteral("Screenshot copied to clipboard"),
-                            recent ? recent->thumbPath : QString(), log.recentId);
+                            handoff ? handoff->thumbPath : QString(), log.captureId);
     return true;
   }
   const QString path = temporarySnapshotPath();
@@ -1786,10 +1787,10 @@ bool quickOutput(QImage image, QuickOutputMode mode, QString &error,
       return false;
     if (mode == QuickOutputMode::Save)
       sendCaptureNotification(QStringLiteral("Screenshot saved"), saved,
-                              log.recentId);
+                              log.captureId);
     else
       sendCaptureNotification(QStringLiteral("Screenshot saved and copied"),
-                              saved, log.recentId);
+                              saved, log.captureId);
   } else {
     QFile::remove(path);
     sendCaptureNotification(QStringLiteral("Screenshot copied to clipboard"));
@@ -1991,7 +1992,7 @@ QSize editorWindowSize(const QSize &preview, const QSize &available,
 
 bool savePinnedSnapshot(QImage image, const QString &path,
                         const QSize &logicalSize, QString &error,
-                        const QString &recentId, const QString &savedPath) {
+                        const QString &captureId, const QString &savedPath) {
   if (savedPath.isEmpty()) {
     setPngLogicalSize(image, logicalSize);
     if (!saveTemporarySnapshot(image, path, error))
@@ -2005,12 +2006,12 @@ bool savePinnedSnapshot(QImage image, const QString &path,
     }
   }
   // The snapshot holds device pixels; the sidecar records the logical size
-  // the capture was presented at, the same way a shelf entry's log does, so
+  // the capture was presented at, the same way an Edit document's log does, so
   // a later edit of the pin reconstructs the scale instead of opening the
   // image blown up.
   OperationLog sidecar;
   sidecar.previewSize = logicalSize;
-  sidecar.recentId = recentId;
+  sidecar.captureId = captureId;
   if (!savedPath.isEmpty())
     sidecar.savedPath = QFileInfo(savedPath).absoluteFilePath();
   if (!logicalSize.isEmpty() &&
@@ -2025,7 +2026,7 @@ QString launchPinnedCapture(
     const QImage &image, const QSize &logicalSize, bool copy,
     PinLifetime lifetime, QString &error,
     const std::function<bool(const QString &, const QStringList &)> &launcher,
-    const QString &recentId, const QString &savedPath) {
+    const QString &captureId, const QString &savedPath) {
   StartupTimingScope timing("prepare and launch pin");
   prunePinnedSnapshots();
   const QString path = pinnedSnapshotPath(1);
@@ -2033,7 +2034,7 @@ QString launchPinnedCapture(
     error = QStringLiteral("Could not create private runtime directory");
     return {};
   }
-  if (!savePinnedSnapshot(image, path, logicalSize, error, recentId, savedPath))
+  if (!savePinnedSnapshot(image, path, logicalSize, error, captureId, savedPath))
     return {};
   const auto cleanup = [&] {
     QFile::remove(path);
@@ -2587,8 +2588,8 @@ bool saveOperationLog(const QString &path, const OperationLog &log,
   root.insert(QStringLiteral("index"), log.index);
   root.insert(QStringLiteral("nextId"), QString::number(log.nextId));
   root.insert(QStringLiteral("nextMarker"), log.nextMarker);
-  if (!log.recentId.isEmpty())
-    root.insert(QStringLiteral("recentId"), log.recentId);
+  if (!log.captureId.isEmpty())
+    root.insert(QStringLiteral("captureId"), log.captureId);
   if (!log.savedPath.isEmpty())
     root.insert(QStringLiteral("savedPath"), log.savedPath);
   if (log.previewSize.isValid()) {
@@ -2650,7 +2651,7 @@ bool loadOperationLog(const QString &path, OperationLog &log, QString &error,
   loaded.index = root.value(QStringLiteral("index")).toInt();
   loaded.nextId = root.value(QStringLiteral("nextId")).toString().toULongLong();
   loaded.nextMarker = root.value(QStringLiteral("nextMarker")).toInt(1);
-  loaded.recentId = root.value(QStringLiteral("recentId")).toString();
+  loaded.captureId = root.value(QStringLiteral("captureId")).toString();
   loaded.savedPath = root.value(QStringLiteral("savedPath")).toString();
   loaded.previewSize =
       QSize(root.value(QStringLiteral("previewWidth")).toInt(),
@@ -2783,7 +2784,7 @@ std::function<QString(const QString &)> omarchyText() {
 } // namespace
 
 QStringList captureNotificationArguments(
-    const QString &message, const QString &imagePath, const QString &recentId,
+    const QString &message, const QString &imagePath, const QString &captureId,
     bool actions, const std::function<QString(const QString &)> &text) {
   const bool toast = actions && !imagePath.isEmpty();
   const auto word = [&](const QString &english) {
@@ -2810,13 +2811,13 @@ QStringList captureNotificationArguments(
     return arguments;
   }
   if (message == QStringLiteral("Screenshot copied to clipboard") &&
-      !recentId.isEmpty()) {
+      !captureId.isEmpty()) {
     arguments << QStringLiteral("--image") << imagePath
               << QStringLiteral("--action") << word(QStringLiteral("Edit"))
-              << omacap << QStringLiteral("--recent") << recentId
+              << omacap << QStringLiteral("--capture-id") << captureId
               << QStringLiteral("--notify")
               << QStringLiteral("--action") << word(QStringLiteral("Save"))
-              << omacap << QStringLiteral("--save-recent") << recentId
+              << omacap << QStringLiteral("--save-capture") << captureId
               << QStringLiteral("--notify");
     return arguments;
   }
@@ -2836,23 +2837,21 @@ QStringList captureNotificationArguments(
             << QStringLiteral("--action") << word(QStringLiteral("Open"))
             << QStringLiteral("xdg-open")
             << QStringLiteral("--action") << word(QStringLiteral("Edit")) << omacap;
-  // Edit reopens the capture's layers and undo history from the recent
-  // shelf; the saved image, appended by --with, is the fallback once the
-  // shelf has dropped it.
-  if (!recentId.isEmpty())
-    arguments << QStringLiteral("--recent") << recentId;
+  // Edit reopens temporary layers; the saved PNG is its fallback after expiry.
+  if (!captureId.isEmpty())
+    arguments << QStringLiteral("--capture-id") << captureId;
   arguments << QStringLiteral("--with")
             << imagePath;
   return arguments;
 }
 
 void sendCaptureNotification(
-    const QString &message, const QString &imagePath, const QString &recentId,
+    const QString &message, const QString &imagePath, const QString &captureId,
     const std::function<bool(const QString &, const QStringList &)> &launcher) {
   const QString program = QStringLiteral("omarchy-notification-send");
   const bool toast = notifySavedCaptures() && !imagePath.isEmpty();
   const QStringList arguments = captureNotificationArguments(
-      message, imagePath, recentId, toast,
+      message, imagePath, captureId, toast,
       toast ? omarchyText() : std::function<QString(const QString &)>{});
   if (!(launcher ? launcher(program, arguments)
                  : QProcess::startDetached(program, arguments)))

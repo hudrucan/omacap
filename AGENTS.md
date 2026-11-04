@@ -17,6 +17,7 @@ Keep its identity, config, runtime paths, locks, and desktop assets distinct fro
 The PNG metadata key `Omasnap logical size` intentionally identifies the shared file format.
 The compact toolbar exposes secondary tools via its More menu; all existing tool shortcuts remain.
 Help is opt-in and may also be opened from More. Preserve the spacing between actions.
+There is no screenshot history; only notification and preview actions retain temporary runtime documents.
 
 ## Project principles
 
@@ -100,7 +101,7 @@ change that touches the principle, not just this summary.
 | `src/stitch-replay.cpp` | Standalone tool: replay a dumped frame directory through the stitcher with no compositor |
 | `src/surface-capture.cpp` | In-process output/window capture via `ext-image-copy-capture` |
 | `src/cut.cpp/.hpp` | Cut-band tool: remove a strip and collapse the gap |
-| `src/recent-snaps.cpp/.hpp` | The recents shelf: shelving/reopening working documents |
+| `src/capture-handoff.cpp/.hpp` | Temporary runtime documents for notification and preview actions |
 | `src/output-config.cpp/.hpp`, `src/palette-config.cpp/.hpp` | The optional `omacap.conf` INI: output destination/filename, color presets |
 | `src/pin.cpp/.hpp`, `src/pin-file.cpp/.hpp`, `src/pin-layout.cpp/.hpp` | Floating pinned captures, their files, and compositor placement |
 | `src/pin-expiry.cpp/.hpp` | Preview countdown, interaction pauses, and fade |

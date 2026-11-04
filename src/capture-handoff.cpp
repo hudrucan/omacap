@@ -1,4 +1,4 @@
-#include "recent-snaps.hpp"
+#include "capture-handoff.hpp"
 #include "png.hpp"
 
 #include "capture.hpp"
@@ -13,7 +13,6 @@
 #include <QLockFile>
 #include <QRegularExpression>
 #include <QUuid>
-#include <QStandardPaths>
 #include <QLatin1StringView>
 #include <QStringList>
 
@@ -34,18 +33,17 @@ QString stemOf(const QString &thumbName) {
   return thumbName.chopped(kThumbSuffix.size());
 }
 
-RecentSnap snapForStem(const QDir &dir, const QString &stem) {
-  RecentSnap snap;
+CaptureHandoff snapForStem(const QDir &dir, const QString &stem) {
+  CaptureHandoff snap;
   snap.sourcePath = dir.filePath(stem + QStringLiteral(".png"));
   snap.thumbPath = dir.filePath(stem + kThumbSuffix);
-  snap.stampMs = stem.section(QLatin1Char('-'), 0, 0).toLongLong();
   const QString log = dir.filePath(stem + QStringLiteral(".json"));
   if (QFile::exists(log))
     snap.logPath = log;
   return snap;
 }
 
-bool validRecentId(const QString &id) {
+bool validCaptureId(const QString &id) {
   static const QRegularExpression pattern(QStringLiteral("^[0-9a-f]{32}$"));
   return pattern.match(id).hasMatch();
 }
@@ -71,61 +69,33 @@ bool waitForPendingCaptures(const QDir &dir, const QString &id = {}) {
 }
 } // namespace
 
-QString recentSnapsDirectory() {
-  QString root = qEnvironmentVariable("OMACAP_RECENT_DIR");
+QString captureHandoffDirectory() {
+  QString root = qEnvironmentVariable("OMACAP_HANDOFF_DIR");
   if (root.isEmpty()) {
-    const QString state =
-        QStandardPaths::writableLocation(QStandardPaths::StateLocation);
-    if (state.isEmpty())
+    const QString runtime = secureRuntimeDirectory();
+    if (runtime.isEmpty())
       return {};
-    root = QDir(state).filePath(QStringLiteral("recent"));
+    root = QDir(runtime).filePath(QStringLiteral("handoffs"));
   }
-  // Working documents hold whole-monitor pixels, so the shelf is as private
-  // as the runtime directory those came from.
+  // Notification and pin handoffs are temporary, never persistent history.
   return ensurePrivateDirectory(root) ? QDir::cleanPath(root) : QString();
 }
 
-QVector<RecentSnap> listRecentSnaps(bool loadThumbnails) {
-  const QString root = recentSnapsDirectory();
-  if (root.isEmpty())
-    return {};
-  const QDir dir(root);
-  // The overlay itself is already available; only its shelf worker waits.
-  static_cast<void>(waitForPendingCaptures(dir));
-  QVector<RecentSnap> snaps;
-  for (const QString &name : thumbNamesNewestFirst(dir)) {
-    RecentSnap snap = snapForStem(dir, stemOf(name));
-    if (!QFile::exists(snap.sourcePath)) {
-      QFile::remove(snap.thumbPath); // orphaned by a failed move; tidy up
-      continue;
-    }
-    if (loadThumbnails) {
-      snap.thumbnail.load(snap.thumbPath);
-      if (snap.thumbnail.isNull())
-        continue;
-    }
-    snaps.push_back(std::move(snap));
-    if (snaps.size() >= kRecentSnapLimit)
-      break;
-  }
-  return snaps;
-}
-
-std::optional<RecentSnap> findRecentSnap(const QString &recentId, QString *error) {
-  if (!validRecentId(recentId))
+std::optional<CaptureHandoff> findCaptureHandoff(const QString &captureId, QString *error) {
+  if (!validCaptureId(captureId))
     return std::nullopt;
-  const QString root = recentSnapsDirectory();
+  const QString root = captureHandoffDirectory();
   if (root.isEmpty())
     return std::nullopt;
   const QDir dir(root);
-  if (!waitForPendingCaptures(dir, recentId)) {
+  if (!waitForPendingCaptures(dir, captureId)) {
     if (error)
       *error = QStringLiteral("This capture is still being saved. Try editing it again shortly.");
     return std::nullopt;
   }
   for (const QString &name : thumbNamesNewestFirst(dir)) {
-    if (name.endsWith(QLatin1Char('-') + recentId + kThumbSuffix)) {
-      const RecentSnap snap = snapForStem(dir, stemOf(name));
+    if (name.endsWith(QLatin1Char('-') + captureId + kThumbSuffix)) {
+      const CaptureHandoff snap = snapForStem(dir, stemOf(name));
       if (QFile::exists(snap.sourcePath))
         return snap;
     }
@@ -133,49 +103,49 @@ std::optional<RecentSnap> findRecentSnap(const QString &recentId, QString *error
   return std::nullopt;
 }
 
-RecentSnapWriter::RecentSnapWriter(QString recentId)
-    : recentId_(recentId.isEmpty() ? QUuid::createUuid().toString(QUuid::Id128)
-                                   : std::move(recentId)),
-      root_(recentSnapsDirectory()), stem_(entryStem()) {
-  if (!validRecentId(recentId_)) {
-    error_ = QStringLiteral("Invalid recent capture identity");
+CaptureHandoffWriter::CaptureHandoffWriter(QString captureId)
+    : captureId_(captureId.isEmpty() ? QUuid::createUuid().toString(QUuid::Id128)
+                                   : std::move(captureId)),
+      root_(captureHandoffDirectory()), stem_(entryStem()) {
+  if (!validCaptureId(captureId_)) {
+    error_ = QStringLiteral("Invalid capture handoff identity");
     return;
   }
   if (root_.isEmpty()) {
-    error_ = QStringLiteral("Could not create the recent captures directory");
+    error_ = QStringLiteral("Could not create the capture handoffs directory");
     return;
   }
   pending_ = std::make_unique<QLockFile>(
-      QDir(root_).filePath(QStringLiteral(".pending-%1.lock").arg(recentId_)));
+      QDir(root_).filePath(QStringLiteral(".pending-%1.lock").arg(captureId_)));
   pending_->setStaleLockTime(0);
   if (!pending_->tryLock(30000))
     error_ = QStringLiteral("This capture is still being saved");
 }
 
-RecentSnapWriter::~RecentSnapWriter() = default;
+CaptureHandoffWriter::~CaptureHandoffWriter() = default;
 
-bool RecentSnapWriter::record(const QImage &source, const OperationLog &log,
+bool CaptureHandoffWriter::record(const QImage &source, const OperationLog &log,
                               const QImage &rendered, QString &error,
-                              const RecentSnap *replaced, RecentSnap *published) {
-  StartupTimingScope timing("record recent capture");
+                              CaptureHandoff *published) {
+  StartupTimingScope timing("record capture handoff");
   if (!error_.isEmpty()) {
     error = error_;
     return false;
   }
   if (rendered.isNull() || source.isNull()) {
-    error = QStringLiteral("Nothing to remember: no working document");
+    error = QStringLiteral("No capture available for Edit/Save");
     return false;
   }
   OperationLog savedLog = log;
-  savedLog.recentId = recentId_;
+  savedLog.captureId = captureId_;
   const QDir dir(root_);
   QString stem = stem_;
-  const QString suffix = QLatin1Char('-') + savedLog.recentId;
+  const QString suffix = QLatin1Char('-') + savedLog.captureId;
   while (QFile::exists(dir.filePath(stem + suffix + kThumbSuffix)) ||
          QFile::exists(dir.filePath(stem + suffix + QStringLiteral(".png"))) ||
          QFile::exists(dir.filePath(stem + suffix + QStringLiteral(".json"))))
     stem = QStringLiteral("%1").arg(stem.toLongLong() + 1, 16, 10, QChar('0'));
-  const RecentSnap snap = snapForStem(dir, stem + suffix);
+  const CaptureHandoff snap = snapForStem(dir, stem + suffix);
 
   // Publish the thumbnail last: readers never see a half-written document.
   // Keep the previous entry until its replacement is completely ready.
@@ -184,15 +154,15 @@ bool RecentSnapWriter::record(const QImage &source, const OperationLog &log,
   if (!sourceFile.open(QIODevice::WriteOnly) ||
       !sourceFile.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner) ||
       !writePng(source, sourceFile) || !sourceFile.commit()) {
-    error = QStringLiteral("Could not write recent capture source: %1")
+    error = QStringLiteral("Could not write capture handoff source: %1")
                 .arg(sourceFile.errorString());
     return false;
   }
   if (!saveOperationLog(operationLogPath(snap.sourcePath), savedLog, error)) {
-    removeRecentSnap(snap);
+    removeCaptureHandoff(snap);
     return false;
   }
-  const QImage thumb = rendered.scaled(kRecentThumbEdge, kRecentThumbEdge,
+  const QImage thumb = rendered.scaled(kHandoffThumbEdge, kHandoffThumbEdge,
                                        Qt::KeepAspectRatio,
                                        Qt::SmoothTransformation);
   QSaveFile thumbFile(snap.thumbPath);
@@ -201,9 +171,9 @@ bool RecentSnapWriter::record(const QImage &source, const OperationLog &log,
       !thumbFile.setPermissions(QFileDevice::ReadOwner |
                                 QFileDevice::WriteOwner) ||
       !writePng(thumb, thumbFile)) {
-    error = QStringLiteral("Could not write recent capture thumbnail: %1")
+    error = QStringLiteral("Could not write capture handoff thumbnail: %1")
                 .arg(thumbFile.errorString());
-    removeRecentSnap(snap);
+    removeCaptureHandoff(snap);
     return false;
   }
 
@@ -211,35 +181,40 @@ bool RecentSnapWriter::record(const QImage &source, const OperationLog &log,
   // a slow full-monitor PNG encode must not hold up another shot's preview.
   QLockFile lock(dir.filePath(QStringLiteral(".record.lock")));
   if (!lock.tryLock(5000) || !thumbFile.commit()) {
-    error = QStringLiteral("Could not publish the recent capture");
-    removeRecentSnap(snap);
+    error = QStringLiteral("Could not publish the capture handoff");
+    removeCaptureHandoff(snap);
     return false;
   }
 
   for (const QString &name : dir.entryList({QStringLiteral("*") + suffix + kThumbSuffix}, QDir::Files)) {
     if (dir.filePath(name) != snap.thumbPath)
-      removeRecentSnap(snapForStem(dir, stemOf(name)));
+      removeCaptureHandoff(snapForStem(dir, stemOf(name)));
   }
 
-  // A reopened entry can have a different capture identity. Remove it before
-  // pruning, so a full shelf does not evict an unrelated capture as well.
-  if (replaced && replaced->sourcePath != snap.sourcePath)
-    removeRecentSnap(*replaced);
-  const QStringList names = thumbNamesNewestFirst(dir);
-  for (qsizetype index = kRecentSnapLimit; index < names.size(); ++index)
-    removeRecentSnap(snapForStem(dir, stemOf(names.at(index))));
+  // Bound temporary action data by age, not by a screenshot-history count.
+  const qint64 cutoff = QDateTime::currentMSecsSinceEpoch() - 15 * 60 * 1000;
+  for (const QString &name : thumbNamesNewestFirst(dir)) {
+    if (QFileInfo(dir.filePath(name)).lastModified().toMSecsSinceEpoch() >= cutoff)
+      continue;
+    const QString oldStem = stemOf(name);
+    const QString id = oldStem.section(QLatin1Char('-'), -1);
+    QLockFile pending(dir.filePath(QStringLiteral(".pending-%1.lock").arg(id)));
+    pending.setStaleLockTime(0);
+    if (pending.tryLock())
+      removeCaptureHandoff(snapForStem(dir, oldStem));
+  }
   if (published)
     *published = snap;
   return true;
 }
 
-bool recordRecentSnap(const QImage &source, const OperationLog &log,
+bool recordCaptureHandoff(const QImage &source, const OperationLog &log,
                       const QImage &rendered, QString &error) {
-  RecentSnapWriter writer(log.recentId);
+  CaptureHandoffWriter writer(log.captureId);
   return writer.record(source, log, rendered, error);
 }
 
-void removeRecentSnap(const RecentSnap &snap) {
+void removeCaptureHandoff(const CaptureHandoff &snap) {
   QFile::remove(snap.thumbPath);
   QFile::remove(snap.sourcePath);
   if (!snap.logPath.isEmpty())

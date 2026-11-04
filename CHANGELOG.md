@@ -1,9 +1,16 @@
 # Changelog
 
-User-facing changes, newest first. This changelog starts with 1.20.0;
-earlier development is recorded in the [commit history](https://github.com/omacom/omasnap/commits/main/).
+## Omacap 0.1.0 (unreleased)
 
-## Unreleased
+- Fork Omasnap with a compact toolbar, a new icon, and separate app paths.
+- Copy captures by default; save only on request. Copy in the editor is silent.
+- Remove hover tooltips and leave space between the toolbar and its menus.
+- Remove screenshot history; keep only temporary data for notification and preview actions.
+
+The entries below are inherited from Omasnap. Earlier upstream development is
+recorded in its [commit history](https://github.com/omacom/omasnap/commits/main/).
+
+## Upstream changes at fork
 
 ### Fixed
 

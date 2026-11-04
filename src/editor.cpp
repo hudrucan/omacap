@@ -3,7 +3,6 @@
 #include "editor.hpp"
 #include "shortcut-guide.hpp"
 #include "chrome-theme.hpp"
-#include "card-stack.hpp"
 #include "pin-file.hpp"
 
 #include "stitch.hpp"
@@ -12,7 +11,7 @@
 #include "output-config.hpp"
 #include "overlay-chrome.hpp"
 #include "palette-config.hpp"
-#include "recent-snaps.hpp"
+#include "capture-handoff.hpp"
 #include "scroll-capture.hpp"
 #include "startup-timing.hpp"
 #include "text-band.hpp"
@@ -25,7 +24,6 @@
 #include <QClipboard>
 #include <QCloseEvent>
 #include <QCursor>
-#include <QDateTime>
 #include <QDebug>
 #include <QDir>
 #include <QEnterEvent>
@@ -288,14 +286,6 @@ constexpr qint64 kNudgeCoalesceMs = 100;
 /// enough to cover a run of notches, short enough that it is back before the
 /// hand has left the wheel.
 constexpr int kAdjustSettleMs = 400;
-/// How long the recents shelf takes to fan out or fold back.
-constexpr int kRecentsFanMs = 180;
-/// Box a shelf card fits in (logical px): small enough to stay out of the way.
-constexpr qreal kRecentCardWidth = 112.0;
-constexpr qreal kRecentCardHeight = 84.0;
-constexpr qreal kRecentCardGap = 10.0;
-constexpr qreal kRecentEdgeMargin = 18.0;
-
 qreal toolbarScale(qreal availableWidth) {
   constexpr qreal sideMargins = 32.0;
   return std::min<qreal>(
@@ -774,16 +764,13 @@ QPointF centeredCreationStart(CaptureEditor::Tool tool, const QPointF &center,
 }
 
 namespace {
-// Called only from output workers. History is independent of clipboard/save
-// success and never takes ownership of the live preview or working snapshot.
-bool rememberCapture(RecentSnapWriter &writer, const QImage &source,
+// Worker-only publication for a notification or preview Edit action.
+bool publishCaptureHandoff(CaptureHandoffWriter &writer, const QImage &source,
                      const OperationLog &log,
                      const QImage &rendered,
-                     const std::optional<RecentSnap> &previous,
-                     RecentSnap *published = nullptr) {
+                     CaptureHandoff *published = nullptr) {
   QString error;
-  if (writer.record(source, log, rendered, error,
-                    previous ? &*previous : nullptr, published))
+  if (writer.record(source, log, rendered, error, published))
     return true;
   qWarning().noquote() << error;
   return false;
@@ -799,8 +786,8 @@ CaptureEditor::CaptureEditor(CaptureData capture, CaptureMode mode,
   startupTimingMark("CaptureEditor constructor entered");
   pristineSource_ = capture_.source;
   pristineLogicalSize_ = capture_.previewSize;
-  recentId_ = log.recentId.isEmpty() ? QUuid::createUuid().toString(QUuid::Id128)
-                                     : log.recentId;
+  captureId_ = log.captureId.isEmpty() ? QUuid::createUuid().toString(QUuid::Id128)
+                                     : log.captureId;
   paletteConfig_ = loadPaletteConfig(defaultConfigPath());
   startupTimingMark("palette config loaded");
   customColor_ = paletteConfig_.custom;
@@ -928,9 +915,6 @@ CaptureEditor::CaptureEditor(CaptureData capture, CaptureMode mode,
 
   connect(&finishWatcher_, &QFutureWatcher<FinishResult>::resultReadyAt, this,
           [this] { completeFinish(finishWatcher_.result()); });
-
-  connect(&reopenWatcher_, &QFutureWatcher<ReopenResult>::finished, this,
-          [this] { completeReopenRecent(reopenWatcher_.result()); });
 
   connect(&snapshotWatcher_, &QFutureWatcher<bool>::finished, this, [this] {
     snapshotBusy_ = false;
@@ -1063,39 +1047,12 @@ CaptureEditor::CaptureEditor(CaptureData capture, CaptureMode mode,
     update();
   });
 
-  recentsAnimTimer_.setInterval(16);
-  connect(&recentsAnimTimer_, &QTimer::timeout, this, [this] {
-    const qreal t = std::min(
-        1.0, recentsAnimClock_.elapsed() / static_cast<qreal>(kRecentsFanMs));
-    const qreal eased = 1.0 - std::pow(1.0 - t, 3.0);
-    const qreal target = recentsOpen_ ? 1.0 : 0.0;
-    recentsFan_ = recentsFanFrom_ + (target - recentsFanFrom_) * eased;
-    if (t >= 1.0)
-      recentsAnimTimer_.stop();
-    update();
-  });
-  connect(&recentsWatcher_, &QFutureWatcher<QVector<RecentSnap>>::finished,
-          this, [this] {
-            recentsLoading_ = false;
-            recents_ = recentsWatcher_.result();
-            if (phase_ == Phase::Select)
-              update();
-          });
-  // Recents remain available during normal capture selection, including
-  // copy-and-preview. Explicit quick output and file inputs do not load them.
-  if (mode != CaptureMode::File &&
-      (quickOutputMode_ == QuickOutputMode::None ||
-       quickOutputMode_ == QuickOutputMode::CopyAndPreview)) {
-    startupTimingMark("recent shelf load dispatch starting");
-    loadRecents();
-    startupTimingMark("recent shelf load dispatched");
-  }
   updatePointerCursor();
 }
 
 CaptureEditor::~CaptureEditor() {
   cancelSaveAs();
-  // Output completion closes the window before history compression finishes.
+  // Output completion closes the window before handoff encoding finishes.
   // Drain those value-only workers after the surface has gone; main releases
   // the instance lock first so another capture cannot terminate this save.
   disconnect(&finishWatcher_, nullptr, this, nullptr);
@@ -2553,8 +2510,6 @@ QString CaptureEditor::measurementText() const {
   if (capture_.source.isNull())
     return {};
   if (phase_ == Phase::Select) {
-    if (recentsOpen_)
-      return {};
     if (windowMode_ || (smartMode_ && !dragging_ && hoveredWindow_ >= 0)) {
       if (hoveredWindow_ < 0 || hoveredWindow_ >= capture_.windows.size())
         return {};
@@ -2851,9 +2806,9 @@ QString CaptureEditor::workingLogPath() const {
 
 OperationLog CaptureEditor::currentOperationLog() const {
   OperationLog log{ops_, opIndex_, nextAnnotationId_, nextMarker_,
-                   pristineLogicalSize_, recentId_};
+                   pristineLogicalSize_, captureId_};
   // Quick capture skips enterEdit(), where the initial crop is normally
-  // committed. Retain that selection so the shelf reopens the captured area.
+  // committed. Retain that selection so Edit reopens the captured area.
   if (phase_ == Phase::Export && !selection_.isEmpty() &&
       selection_ != QRectF(QPointF(), pristineLogicalSize_)) {
     log.ops.resize(log.index);
@@ -2870,8 +2825,8 @@ bool CaptureEditor::restoreOperationLog(const QString &path, QString &error) {
   OperationLog log;
   if (!loadOperationLog(path, log, error))
     return false;
-  if (!log.recentId.isEmpty())
-    recentId_ = log.recentId;
+  if (!log.captureId.isEmpty())
+    captureId_ = log.captureId;
   ops_ = std::move(log.ops);
   opIndex_ = std::clamp(log.index, 0, static_cast<int>(ops_.size()));
   nextAnnotationId_ = std::max<quint64>(log.nextId, 1);
@@ -3341,7 +3296,7 @@ bool CaptureEditor::waitForSnapshot() {
 
 void CaptureEditor::waitForExport() {
   QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-  // Wait for output and its subsequent history write, letting the queued
+  // Wait for output and its subsequent temporary handoff write, letting the queued
   // resultReadyAt() signal reach completeFinish() and close the editor first.
   while (finishWatcher_.isRunning()) {
     QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
@@ -3423,15 +3378,6 @@ void CaptureEditor::handOffEditor(bool toWindow) {
   }));
 }
 
-void CaptureEditor::waitForReopen() {
-  while (reopenWatcher_.isRunning()) {
-    QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-    QThread::yieldCurrentThread();
-  }
-  for (int pass = 0; pass < 3; ++pass)
-    QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-}
-
 void CaptureEditor::pinSnapshot() {
   if (busy_ || pinPending_ || selection_.isEmpty())
     return;
@@ -3446,7 +3392,6 @@ void CaptureEditor::pinSnapshot() {
   const CaptureData captureCopy = capture_;
   const QImage source = pristineSource_;
   const OperationLog log = currentOperationLog();
-  const auto previous = editingRecent_;
   const QVector<Annotation> annotations = annotations_;
   const QRectF selection = selection_;
   const BackgroundStyle background = backgroundStyle_;
@@ -3455,18 +3400,18 @@ void CaptureEditor::pinSnapshot() {
   const QImage backdrop = customBackdrop_;
   const auto launcher = processLauncher_;
   pinWatcher_.setFuture(QtConcurrent::run(
-      [captureCopy, source, log, previous, annotations, selection, background,
+      [captureCopy, source, log, annotations, selection, background,
        imageShadow, canvasBoundary, backdrop, launcher](QPromise<PinResult> &completion) {
         PinResult result;
-        RecentSnapWriter recent(log.recentId);
+        CaptureHandoffWriter handoff(log.captureId);
         const QImage image =
             renderCapture(captureCopy, selection, annotations, background,
                           imageShadow, canvasBoundary, backdrop);
         result.path = launchPinnedCapture(
             image, renderedCaptureLogicalSize(captureCopy, image.size()),
-            false, PinLifetime::Persistent, result.error, launcher, log.recentId);
+            false, PinLifetime::Persistent, result.error, launcher, log.captureId);
         completion.addResult(result);
-        rememberCapture(recent, source, log, image, previous);
+        publishCaptureHandoff(handoff, source, log, image);
       }));
 }
 
@@ -3608,22 +3553,18 @@ void CaptureEditor::cancelEditInteraction() {
   update();
 }
 
-void CaptureEditor::dismissEditor(bool remember) {
-  if (!pinDocument_ && (!remember || phase_ != Phase::Edit || selection_.isEmpty())) {
+void CaptureEditor::dismissEditor() {
+  if (!pinDocument_) {
     close();
     return;
   }
-  // Keep the completed capture even if no Copy/Save action was used. An
-  // originating pin also receives its preview and editable log as before.
+  // Return edits only to the originating pin; closing an editor keeps no history.
   endNudgeRun();
   busy_ = true;
   setEnabled(false);
-  setStatus(pinDocument_ ? QStringLiteral("Returning to pinned capture…")
-                        : QStringLiteral("Keeping recent capture…"));
+  setStatus(QStringLiteral("Returning to pinned capture…"));
   const auto document = pinDocument_;
   const CaptureData capture = capture_;
-  const QImage source = pristineSource_;
-  const auto previous = editingRecent_;
   const QRectF selection = selection_;
   const auto annotations = annotations_;
   const auto background = backgroundStyle_;
@@ -3643,25 +3584,18 @@ void CaptureEditor::dismissEditor(bool remember) {
       setStatus(error);
   });
   dismissFuture_ = QtConcurrent::run(
-      [document, capture, source, previous, remember, selection, annotations,
+      [document, capture, selection, annotations,
        background, shadow, boundary, backdrop, log](QPromise<QString> &completion) {
     QString error;
-    // Reserve before updating the pin: an immediate Edit waits for its full
-    // working document rather than opening an older or flattened version.
-    std::optional<RecentSnapWriter> recent;
-    if (remember)
-      recent.emplace(log.recentId);
     const QImage image = renderCapture(capture, selection, annotations, background,
                                        shadow, boundary, backdrop);
     // Commit the log last: its atomic replacement tells the pin that both
     // the preview and the editable document are ready to read.
     if (document && savePinnedSnapshot(image, document->previewPath(),
                             renderedCaptureLogicalSize(capture, image.size()),
-                            error, log.recentId))
+                            error, log.captureId))
       static_cast<void>(saveOperationLog(operationLogPath(document->path()), log, error));
     completion.addResult(error);
-    if (recent)
-      rememberCapture(*recent, source, log, image, previous);
   });
   watcher->setFuture(dismissFuture_);
 }
@@ -4112,7 +4046,6 @@ void CaptureEditor::finish(OutputMode mode) {
   const CaptureData captureCopy = capture_;
   const QImage source = pristineSource_;
   const OperationLog log = currentOperationLog();
-  const auto previous = editingRecent_;
   const QRectF selection = selection_;
   const QVector<Annotation> annotations = annotations_;
   const BackgroundStyle background = backgroundStyle_;
@@ -4123,7 +4056,7 @@ void CaptureEditor::finish(OutputMode mode) {
       appFilenameSlug(dominantAppClass(capture_.windows, selection_));
   const auto launcher = processLauncher_;
   const bool savedPreview = phase_ == Phase::Edit;
-  finishWatcher_.setFuture(QtConcurrent::run([captureCopy, source, log, previous, selection,
+  finishWatcher_.setFuture(QtConcurrent::run([captureCopy, source, log, selection,
                                               annotations, background,
                                               imageShadow, canvasBoundary,
                                               backdrop, appSlug, mode, launcher, savedPreview,
@@ -4133,7 +4066,9 @@ void CaptureEditor::finish(OutputMode mode) {
     FinishResult result;
     result.mode = mode;
     result.snapshotsSuppressed = snapshotsSuppressed;
-    RecentSnapWriter recent(log.recentId);
+    std::optional<CaptureHandoffWriter> handoff;
+    if (mode != OutputMode::Copy)
+      handoff.emplace(log.captureId);
     bool copiedNotice = false;
     const auto cleanWorkingDocument = [&] {
       pendingSnapshot.waitForFinished();
@@ -4148,17 +4083,18 @@ void CaptureEditor::finish(OutputMode mode) {
     const auto retainAfterOutput = qScopeGuard([&] {
       startupTimingMark("capture output ready");
       completion.addResult(result);
-      RecentSnap published;
-      const bool remembered = rememberCapture(recent, source, log, image, previous, &published);
+      CaptureHandoff published;
+      const bool handoffReady = !handoff || !result.error.isEmpty() ||
+          publishCaptureHandoff(*handoff, source, log, image, &published);
       if (copiedNotice && result.error.isEmpty())
         sendCaptureNotification(
-            remembered ? QStringLiteral("Screenshot copied to clipboard")
+            handoffReady ? QStringLiteral("Screenshot copied to clipboard")
                        : QStringLiteral("Screenshot copied; could not prepare Save/Edit"),
-            remembered ? published.thumbPath : QString(), log.recentId, launcher);
-      // An unsuccessful shelf write must not delete the recovery document.
-      if (remembered && result.error.isEmpty()) {
+            handoffReady ? published.thumbPath : QString(), log.captureId, launcher);
+      // A failed action handoff must not delete the recovery document.
+      if (handoffReady && result.error.isEmpty()) {
         cleanWorkingDocument();
-      } else if (!remembered && result.error.isEmpty() &&
+      } else if (!handoffReady && result.error.isEmpty() &&
                  !workingSource.isEmpty()) {
         pendingSnapshot.waitForFinished();
         QString recoveryError;
@@ -4175,7 +4111,7 @@ void CaptureEditor::finish(OutputMode mode) {
       else
         static_cast<void>(launchPinnedCapture(
             image, renderedCaptureLogicalSize(captureCopy, image.size()),
-            true, PinLifetime::Timed, result.error, launcher, log.recentId));
+            true, PinLifetime::Timed, result.error, launcher, log.captureId));
       return;
     }
     const QString exportPath = temporaryExportPath();
@@ -4207,7 +4143,7 @@ void CaptureEditor::finish(OutputMode mode) {
       if (preview) {
         const QString pin = launchPinnedCapture(
             image, renderedCaptureLogicalSize(captureCopy, image.size()), false,
-            PinLifetime::Timed, result.error, launcher, log.recentId, result.saved);
+            PinLifetime::Timed, result.error, launcher, log.captureId, result.saved);
         if (pin.isEmpty()) {
           result.error = QStringLiteral("Saved to %1, but could not show its preview: %2")
                              .arg(result.saved, result.error);
@@ -4217,7 +4153,7 @@ void CaptureEditor::finish(OutputMode mode) {
         sendCaptureNotification(mode == OutputMode::Save
                                     ? QStringLiteral("Screenshot saved")
                                     : QStringLiteral("Screenshot saved and copied"),
-                                result.saved, log.recentId, launcher);
+                                result.saved, log.captureId, launcher);
       }
       if (savedPreview || autosave) {
         result.savedPreview = true;
@@ -4251,7 +4187,7 @@ void CaptureEditor::completeFinish(const FinishResult &result) {
     return;
   }
   // Copy from an editor is already an explicit action; closing it is enough.
-  dismissEditor(false);
+  dismissEditor();
 }
 
 void CaptureEditor::handleToolbar(const QString &action) {
@@ -4847,9 +4783,8 @@ void CaptureEditor::enterEvent(QEnterEvent *event) {
   cursor_ = event->position();
   if (capturePending_)
     return;
-  trackRecentsHover();
   if (smartMode_ || windowMode_)
-    hoveredWindow_ = recentsOpen_ ? -1 : windowAt(cursor_);
+    hoveredWindow_ = windowAt(cursor_);
   updatePointerCursor();
   QRegion damage = oldVisual | pointerMotionRegion(cursor_);
   if ((smartMode_ || windowMode_) && oldHoveredWindow != hoveredWindow_)
@@ -5080,14 +5015,12 @@ QRegion CaptureEditor::pointerMotionRegion(const QPointF &point,
   add(QRectF(point.x() - 230, point.y() - 70, 460, 140));
 
   if (phase_ == Phase::Select) {
-    if (!windowMode_ && !dragging_ && !recentsOpen_) {
+    if (!windowMode_ && !dragging_) {
       add(QRectF(point.x() - 3, 0, 7, height()));
       add(QRectF(0, point.y() - 3, width(), 7));
     }
     if (!selection_.isEmpty())
       addFrame(selection_);
-    if (recentsHotZone().contains(point))
-      add(recentsHotZone());
     return damage;
   }
   if (phase_ != Phase::Edit)
@@ -5320,15 +5253,13 @@ void CaptureEditor::mouseMoveEvent(QMouseEvent *event) {
   if (capturePending_)
     return;
   if (phase_ == Phase::Select) {
-    if (!dragging_)
-      trackRecentsHover();
     if (smartMode_) {
       if (dragging_)
         selection_ = normalizedSelection(dragStart_, cursor_);
       else
-        hoveredWindow_ = recentsOpen_ ? -1 : windowAt(cursor_);
+        hoveredWindow_ = windowAt(cursor_);
     } else if (windowMode_)
-      hoveredWindow_ = recentsOpen_ ? -1 : windowAt(cursor_);
+      hoveredWindow_ = windowAt(cursor_);
     else if (dragging_)
       selection_ = normalizedSelection(dragStart_, cursor_);
     if (!dragging_)
@@ -5731,13 +5662,7 @@ void CaptureEditor::mousePressEvent(QMouseEvent *event) {
     return;
   }
   if (phase_ == Phase::Select) {
-    trackRecentsHover();
-    if (recentsOpen_) {
-      if (const int recent = recentAt(cursor_); recent >= 0)
-        reopenRecent(recent);
-      return; // a click in the shelf's margin is not the start of a drag
-    }
-    if (windowMode_) {
+      if (windowMode_) {
       chooseWindow(windowAt(cursor_));
       return;
     }
@@ -6577,10 +6502,7 @@ void CaptureEditor::updatePointerCursor() {
   }
   if (phase_ == Phase::Select) {
     clearHighlighterPreview();
-    const bool pointing =
-        windowMode_ || (recentsOpen_ && recentAt(cursor_) >= 0);
-    applyCursor(pointing ? Qt::PointingHandCursor
-                         : recentsOpen_ ? Qt::ArrowCursor : Qt::CrossCursor);
+    applyCursor(windowMode_ ? Qt::PointingHandCursor : Qt::CrossCursor);
     return;
   }
   // The arrow tip, tail, or bend (and a line's endpoint) is the placement
@@ -6834,9 +6756,8 @@ void CaptureEditor::adoptStitched(const QImage &image) {
 void CaptureEditor::adoptImage(QImage image, OperationLog log, CaptureMode kind,
                                const QString &status) {
   pinDocument_.reset();
-  recentId_ = log.recentId.isEmpty() ? QUuid::createUuid().toString(QUuid::Id128)
-                                     : log.recentId;
-  editingRecent_.reset();
+  captureId_ = log.captureId.isEmpty() ? QUuid::createUuid().toString(QUuid::Id128)
+                                     : log.captureId;
   // The editor normally works on a region of the frozen screen. Here it is
   // handed an image instead (a stitched scroll, a shelved capture, a file)
   // and edits that: the image is the whole capture, at the scale its log was
@@ -6884,8 +6805,7 @@ void CaptureEditor::adoptImage(QImage image, OperationLog log, CaptureMode kind,
 
 void CaptureEditor::returnToSelect() {
   pinDocument_.reset();
-  editingRecent_.reset();
-  recentId_ = QUuid::createUuid().toString(QUuid::Id128);
+  captureId_ = QUuid::createUuid().toString(QUuid::Id128);
   if (textEditing()) {
     textEditor_->clear();
     textEditor_->hide();
@@ -6953,263 +6873,6 @@ QRectF CaptureEditor::scrollPillRect() const {
   return QRectF(image.center().x() - width / 2.0, y, width, height);
 }
 
-void CaptureEditor::loadRecents() {
-  recentsLoading_ = true;
-  recentsWatcher_.setFuture(
-      QtConcurrent::run([] { return listRecentSnaps(true); }));
-}
-
-bool CaptureEditor::waitForRecents() {
-  while (recentsLoading_) {
-    QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-    QThread::yieldCurrentThread();
-  }
-  return !recents_.isEmpty();
-}
-
-QVector<CaptureEditor::RecentCard>
-CaptureEditor::recentCards(qreal fan) const {
-  if (phase_ != Phase::Select || recents_.isEmpty())
-    return {};
-  // Card 0 is the newest and sits on top of the stack; fanned, it is the
-  // topmost of the column. Each keeps its own aspect inside the card box.
-  QVector<QSizeF> sizes;
-  qreal column = 0.0;
-  for (const RecentSnap &snap : recents_) {
-    QSizeF size(kRecentCardWidth, kRecentCardHeight);
-    if (!snap.thumbnail.isNull()) {
-      size = QSizeF(snap.thumbnail.size())
-                 .scaled(kRecentCardWidth, kRecentCardHeight,
-                         Qt::KeepAspectRatio);
-      size.setWidth(std::max(size.width(), 36.0));
-      size.setHeight(std::max(size.height(), 28.0));
-    }
-    sizes.push_back(size);
-    column += size.height() + kRecentCardGap;
-  }
-  column -= kRecentCardGap;
-
-  const qreal stackX = width() - kRecentEdgeMargin - kRecentCardWidth / 2.0;
-  const qreal fanX = stackX - 8.0 * fan;
-  const qreal stackY = height() / 2.0;
-  // Column centred on the stack, kept clear of the legend at the top and the
-  // status pill at the bottom.
-  qreal top = stackY - column / 2.0;
-  top = std::max(top, 170.0);
-  top = std::min(top, std::max(170.0, height() - 70.0 - column));
-
-  QVector<RecentCard> cards;
-  qreal y = top;
-  for (int index = 0; index < sizes.size(); ++index) {
-    const QSizeF size = sizes.at(index);
-    const QPointF stacked(stackX + index * 1.5, stackY + index * 3.0);
-    const QPointF fanned(fanX, y + size.height() / 2.0);
-    const QPointF centre = stacked + (fanned - stacked) * fan;
-    RecentCard card;
-    card.rect = QRectF(centre - QPointF(size.width() / 2.0, size.height() / 2.0),
-                       size);
-    card.rotation = stackCardTilt(index, fan);
-    cards.push_back(card);
-    y += size.height() + kRecentCardGap;
-  }
-  return cards;
-}
-
-QRectF CaptureEditor::recentsHotZone() const {
-  const QVector<RecentCard> cards = recentCards(recentsOpen_ ? 1.0 : 0.0);
-  if (cards.isEmpty())
-    return {};
-  QRectF zone = cards.constFirst().rect;
-  for (const RecentCard &card : cards)
-    zone = zone.united(card.rect);
-  // Open, the zone reaches the screen edge and a little past the cards so
-  // moving between them never folds the shelf; closed, it is tighter so the
-  // crosshair can pass nearby without waking it.
-  return recentsOpen_ ? QRectF(zone.left() - 28.0, zone.top() - 20.0,
-                               width() - zone.left() + 28.0,
-                               zone.height() + 40.0)
-                      : zone.adjusted(-12.0, -22.0, 12.0, 26.0);
-}
-
-int CaptureEditor::recentAt(const QPointF &position) const {
-  const QVector<RecentCard> cards = recentCards(1.0);
-  for (int index = 0; index < cards.size(); ++index) {
-    if (cards.at(index).rect.adjusted(-4.0, -kRecentCardGap / 2.0, 4.0,
-                                      kRecentCardGap / 2.0)
-            .contains(position))
-      return index;
-  }
-  return -1;
-}
-
-QRectF CaptureEditor::recentCardRectForTest(int index) const {
-  const QVector<RecentCard> cards = recentCards(recentsOpen_ ? 1.0 : 0.0);
-  return index >= 0 && index < cards.size() ? cards.at(index).rect : QRectF();
-}
-
-void CaptureEditor::setRecentsOpen(bool open) {
-  if (recentsOpen_ == open)
-    return;
-  recentsOpen_ = open;
-  recentsFanFrom_ = recentsFan_;
-  recentsAnimClock_.start();
-  recentsAnimTimer_.start();
-  if (!open)
-    hoveredRecent_ = -1;
-  update();
-}
-
-void CaptureEditor::trackRecentsHover() {
-  if (recents_.isEmpty())
-    return;
-  setRecentsOpen(recentsHotZone().contains(cursor_));
-  hoveredRecent_ = recentsOpen_ ? recentAt(cursor_) : -1;
-}
-
-namespace {
-QString relativeAge(qint64 stampMs) {
-  if (stampMs <= 0)
-    return {};
-  const qint64 seconds =
-      std::max<qint64>(0, (QDateTime::currentMSecsSinceEpoch() - stampMs) /
-                              1000);
-  if (seconds < 60)
-    return QStringLiteral("just now");
-  if (seconds < 3600)
-    return QStringLiteral("%1 min ago").arg(seconds / 60);
-  if (seconds < 86400)
-    return QStringLiteral("%1 h ago").arg(seconds / 3600);
-  return QStringLiteral("%1 d ago").arg(seconds / 86400);
-}
-} // namespace
-
-void CaptureEditor::paintRecents(QPainter &painter) {
-  const QVector<RecentCard> cards = recentCards(recentsFan_);
-  if (cards.isEmpty())
-    return;
-  painter.save();
-  painter.setRenderHint(QPainter::Antialiasing);
-  painter.setRenderHint(QPainter::SmoothPixmapTransform);
-  // Bottom of the deck first so the newest lands on top.
-  for (int index = cards.size() - 1; index >= 0; --index) {
-    const RecentCard &card = cards.at(index);
-    const bool hovered = recentsOpen_ && index == hoveredRecent_;
-    const QImage &thumb = recents_.at(index).thumbnail;
-    painter.save();
-    painter.translate(card.rect.center());
-    painter.rotate(card.rotation);
-    if (hovered) {
-      painter.scale(1.08, 1.08);
-      painter.translate(-4.0, 0.0);
-    }
-    const QRectF local(-card.rect.width() / 2.0, -card.rect.height() / 2.0,
-                       card.rect.width(), card.rect.height());
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(QColor(0, 0, 0, hovered ? 140 : 100));
-    painter.drawRoundedRect(local.translated(0, 3).adjusted(-1, -1, 1, 1), 6,
-                            6);
-    QPainterPath clip;
-    clip.addRoundedRect(local, 4, 4);
-    painter.save();
-    painter.setClipPath(clip);
-    if (thumb.isNull())
-      painter.fillRect(local, chromeTheme().surface);
-    else
-      painter.drawImage(local, thumb);
-    // Cards beneath the top one are dimmed while stacked so the deck reads
-    // as depth; fanned, every card shows at full strength.
-    if (index > 0 && recentsFan_ < 1.0)
-      painter.fillRect(local, QColor(0, 0, 0, static_cast<int>(
-                                                  90 * (1.0 - recentsFan_))));
-    painter.restore();
-    painter.setBrush(Qt::NoBrush);
-    painter.setPen(QPen(hovered ? chromeTheme().accent
-                                : chromeAlpha(chromeTheme().foreground, 120),
-                        hovered ? 2.0 : 1.0));
-    painter.drawRoundedRect(local, 4, 4);
-    painter.restore();
-
-    if (hovered) {
-      const QString age = relativeAge(recents_.at(index).stampMs);
-      if (!age.isEmpty()) {
-        QFont ageFont(QStringLiteral("Noto Sans"));
-        ageFont.setPixelSize(10);
-        ageFont.setBold(true);
-        painter.setFont(ageFont);
-        const QFontMetricsF metrics(ageFont);
-        const qreal w = metrics.horizontalAdvance(age) + 12.0;
-        const QRectF pill(card.rect.left() - 12.0 - w,
-                          card.rect.center().y() - 9.0, w, 18.0);
-        painter.setPen(Qt::NoPen);
-        painter.setBrush(chromeTheme().surface);
-        painter.drawRoundedRect(pill, 9, 9);
-        painter.setPen(chromeAlpha(chromeTheme().foreground, 220));
-        painter.drawText(pill, Qt::AlignCenter, age);
-      }
-    }
-  }
-
-  // Caption under the stack names it; under the fan it says what a click does.
-  QFont captionFont(QStringLiteral("Noto Sans"));
-  captionFont.setPixelSize(10);
-  captionFont.setBold(true);
-  captionFont.setLetterSpacing(QFont::AbsoluteSpacing, 0.8);
-  painter.setFont(captionFont);
-  const QString caption = recentsFan_ < 0.5 ? QStringLiteral("RECENT")
-                                            : QStringLiteral("CLICK TO REOPEN");
-  const qreal fade = std::abs(recentsFan_ - 0.5) * 2.0;
-  painter.setPen(chromeAlpha(chromeTheme().foreground, static_cast<int>(150 * fade)));
-  qreal bottom = cards.constFirst().rect.bottom();
-  for (const RecentCard &card : cards)
-    bottom = std::max(bottom, card.rect.bottom());
-  const qreal captionCentreX = cards.constFirst().rect.center().x();
-  painter.drawText(QRectF(captionCentreX - 80.0, bottom + 10.0, 160.0, 16.0),
-                   Qt::AlignCenter, caption);
-  painter.restore();
-}
-
-void CaptureEditor::reopenRecent(int index) {
-  if (index < 0 || index >= recents_.size() || reopenPending_)
-    return;
-  // The earlier working document opens here, in place of a new capture:
-  // same surface, layers still editable. Nothing was captured yet, so there
-  // is no snapshot to clean up. A shelved capture can be a stitched scroll
-  // result tens of megapixels large, so the decode runs on the worker pool
-  // rather than blocking the click that asked for it.
-  const RecentSnap recent = recents_.at(index);
-  reopenPending_ = true;
-  setRecentsOpen(false);
-  setStatus(QStringLiteral("Opening…"));
-  reopenWatcher_.setFuture(QtConcurrent::run([recent] {
-    ReopenResult result;
-    result.recent = recent;
-    if (!result.image.load(recent.sourcePath)) {
-      result.error = QStringLiteral("Could not load that capture");
-      return result;
-    }
-    if (!recent.logPath.isEmpty() &&
-        !loadOperationLog(recent.logPath, result.log, result.error))
-      result.image = {};
-    return result;
-  }));
-}
-
-void CaptureEditor::completeReopenRecent(const ReopenResult &result) {
-  reopenPending_ = false;
-  if (result.image.isNull()) {
-    setStatus(result.error.isEmpty()
-                  ? QStringLiteral("Could not restore that capture")
-                  : result.error);
-    return;
-  }
-  // The shelf is always an edit action, even when this overlay normally
-  // copies fresh captures straight into timed previews.
-  quickOutputMode_ = QuickOutputMode::None;
-  adoptImage(result.image, result.log, CaptureMode::Region,
-             QStringLiteral("Reopened recent capture · Copy/Save to output"));
-  editingRecent_ = result.recent;
-}
-
 void CaptureEditor::selectFullscreen() {
   smartMode_ = false;
   windowMode_ = false;
@@ -7265,7 +6928,7 @@ void CaptureEditor::paintSelect(QPainter &painter) {
   const bool smartWindow = smartMode_ && !dragging_ && hoveredWindow_ >= 0 &&
                            hoveredWindow_ < capture_.windows.size();
   const bool smartFullscreen =
-      smartMode_ && !dragging_ && !recentsOpen_ && hoveredWindow_ < 0;
+      smartMode_ && !dragging_ && hoveredWindow_ < 0;
   const bool targetWindow = windowMode_ || smartWindow;
   const bool haveHole =
       exporting ? !selection_.isEmpty()
@@ -7317,13 +6980,11 @@ void CaptureEditor::paintSelect(QPainter &painter) {
     painter.drawRect(outline);
   }
 
-  if (!exporting && !windowMode_ && !dragging_ && !recentsOpen_) {
+  if (!exporting && !windowMode_ && !dragging_) {
     painter.setPen(QPen(chromeAlpha(chromeTheme().foreground, 56), 1));
     painter.drawLine(QPointF(cursor_.x(), 0), QPointF(cursor_.x(), height()));
     painter.drawLine(QPointF(0, cursor_.y()), QPointF(width(), cursor_.y()));
   }
-  if (!exporting)
-    paintRecents(painter);
   if (!dragging_)
     drawStatusPill(painter, rect(), status_.isEmpty()
         ? QStringLiteral("Drag to capture  ·  Esc to cancel  ·  ? for shortcuts")

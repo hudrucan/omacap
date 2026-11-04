@@ -2,7 +2,7 @@
 #include "pin-file.hpp"
 
 #include "capture.hpp"
-#include "recent-snaps.hpp"
+#include "capture-handoff.hpp"
 
 #include <QDir>
 #include <QFile>
@@ -69,17 +69,17 @@ std::shared_ptr<PinSnapshotFile> copyPinDocument(const QString &path, QString &e
   OperationLog log;
   if (!loadSidecarOperationLog(path, log, error))
     return {};
-  // The visible PNG is flattened. If its capture is still on the shelf,
+  // The visible PNG is flattened. If its temporary action document is available,
   // restore the working document so editing a preview retains its layers too.
   QString source = path;
-  QString recentError;
-  if (const auto recent = findRecentSnap(log.recentId, &recentError)) {
-    if (!loadOperationLog(recent->logPath, log, error))
+  QString handoffError;
+  if (const auto handoff = findCaptureHandoff(log.captureId, &handoffError)) {
+    if (!loadOperationLog(handoff->logPath, log, error))
       return {};
-    source = recent->sourcePath;
+    source = handoff->sourcePath;
   }
-  if (!recentError.isEmpty()) {
-    error = recentError;
+  if (!handoffError.isEmpty()) {
+    error = handoffError;
     return {};
   }
   // This is a new working document, not a completed export. Further editing

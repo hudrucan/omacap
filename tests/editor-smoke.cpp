@@ -16,8 +16,8 @@
 #include "shortcut-guide.hpp"
 #include "selection-repaint-smoke.hpp"
 #include "overlay-chrome.hpp"
-#include "recent-snaps.hpp"
-#include "recent-persistence-smoke.hpp"
+#include "capture-handoff-test.hpp"
+#include "capture-handoff-smoke.hpp"
 #include "instance-lock-smoke.hpp"
 #include "palette-config-smoke.hpp"
 #include "pin-layout-smoke.hpp"
@@ -2630,7 +2630,7 @@ bool runPostCaptureChecks(QString &error, bool autosave) {
     CaptureEditor editor(capture, mode, QuickOutputMode::CopyAndPreview);
     // Hold publication independently of machine/PNG speed. Preview completion
     // must not wait on history, while an immediate Edit must wait for its source.
-    QLockFile slowHistory(QDir(recentSnapsDirectory()).filePath(QStringLiteral(".record.lock")));
+    QLockFile slowHistory(QDir(captureHandoffDirectory()).filePath(QStringLiteral(".record.lock")));
     if (mode == Mode::Region && !slowHistory.tryLock(0))
       return false;
     const auto releaseHistory = qScopeGuard([&] { slowHistory.unlock(); });
@@ -2716,80 +2716,18 @@ bool runPostCaptureChecks(QString &error, bool autosave) {
       error = QStringLiteral("Autosave did not preserve the capture and preview's saved path");
       return false;
     }
-    const auto recent = findRecentSnap(log.recentId);
-    const auto listed = listRecentSnaps(false);
-    if (!recent || listed.isEmpty() ||
-        listed.constFirst().sourcePath != recent->sourcePath) {
-      error = QStringLiteral("An untouched capture was not the newest recent shot");
+    if (!findCaptureHandoff(log.captureId)) {
+      error = QStringLiteral("Preview Edit has no temporary document");
       return false;
     }
-    // The temporary preview's last owner deletes it on close or expiry.
-    // Its independent recent entry must still reopen the exact native crop.
+    // Preview ownership still cleans its own files independently of Edit data.
     {
       PinSnapshotFile preview(pin);
       if (!preview.isLocked())
         return false;
     }
-    if (QFile::exists(pin) || !QFile::exists(recent->sourcePath) ||
-        (autosave && !QFile::exists(log.savedPath))) {
-      error = QStringLiteral("Preview expiry removed its recent capture");
-      return false;
-    }
-    CaptureEditor next(capture, Mode::Region, QuickOutputMode::CopyAndPreview);
-    next.resize(800, 600);
-    next.show();
-    if (!next.waitForRecents()) {
-      error = QStringLiteral("The normal capture overlay did not offer recent shots");
-      return false;
-    }
-    // Move off the stack first: Qt's offscreen backend can otherwise elide
-    // the move when successive overlays put a card at the same global point.
-    QTest::mouseMove(&next, QPoint(100, 100), 20);
-    QCoreApplication::processEvents();
-    QTest::mouseMove(&next, next.recentCardRectForTest(0).center().toPoint(), 20);
-    if (!QTest::qWaitFor([&] { return next.recentsOpenForTest(); }, 1000)) {
-      error = QStringLiteral("The recent shots did not fan out on hover (mode %1)").arg(static_cast<int>(mode));
-      return false;
-    }
-    QTest::mouseClick(&next, Qt::LeftButton, Qt::NoModifier,
-                      next.recentCardRectForTest(0).center().toPoint());
-    next.waitForReopen();
-    if (!next.editingForTest() || next.exportingForTest() ||
-        next.renderCurrentOutput().convertToFormat(expected.format()) != expected) {
-      error = QStringLiteral("The newest card did not reopen the expired preview for annotation: mode %1, edit %2, export %3, actual %4x%5, expected %6x%7, cards %8")
-                  .arg(static_cast<int>(mode)).arg(next.editingForTest()).arg(next.exportingForTest())
-                  .arg(next.renderCurrentOutput().width()).arg(next.renderCurrentOutput().height())
-                  .arg(expected.width()).arg(expected.height()).arg(next.recentCountForTest());
-      return false;
-    }
-    const qsizetype count = listed.size();
-    const QImage clipboardBefore(clipboard);
-    QTest::keyClick(&next, Qt::Key_A);
-    const QRectF frame = next.sourceFrameWidgetRectForTest();
-    QTest::mousePress(&next, Qt::LeftButton, Qt::NoModifier,
-                      (frame.topLeft() + QPointF(frame.width() * .2, frame.height() * .2)).toPoint());
-    QTest::mouseRelease(&next, Qt::LeftButton, Qt::NoModifier,
-                        (frame.topLeft() + QPointF(frame.width() * .7, frame.height() * .7)).toPoint());
-    QTest::keyClick(&next, Qt::Key_Escape);
-    if (!QTest::qWaitFor([&] { return !next.isVisible(); }, 5000)) {
-      error = QStringLiteral("Esc did not remember the capture without copying or saving");
-      return false;
-    }
-    OperationLog editedLog;
-    const auto edited = findRecentSnap(log.recentId);
-    if (!edited || listRecentSnaps(false).size() != count ||
-        !loadOperationLog(edited->logPath, editedLog, error) ||
-        QImage(clipboard) != clipboardBefore ||
-        next.annotationCountForTest() != 1) {
-      error = QStringLiteral("Editing a recent shot duplicated it, lost its layer, or copied on Esc");
-      return false;
-    }
-    CaptureData restored;
-    describeFileCapture(restored, QImage(edited->sourcePath), editedLog);
-    CaptureEditor reopened(restored, Mode::File, QuickOutputMode::None, editedLog);
-    if (reopened.annotationCountForTest() != 1 ||
-        reopened.renderCurrentOutput() != next.renderCurrentOutput()) {
-      error = QStringLiteral("The recent capture did not retain its editable annotation");
+    if (QFile::exists(pin) || (autosave && !QFile::exists(log.savedPath))) {
+      error = QStringLiteral("Preview expiry did not preserve explicit saves");
       return false;
     }
   }
@@ -2831,10 +2769,10 @@ bool runPostCaptureChecks(QString &error, bool autosave) {
       const QString saved = toast.isEmpty() ? QString() : toast.last();
       const auto removeSaved = qScopeGuard([&] { QFile::remove(saved); });
       // Edit reopens the capture's layers from the recent shelf.
-      const qsizetype recent = toast.indexOf(QStringLiteral("--recent"));
+      const qsizetype recent = toast.indexOf(QStringLiteral("--capture-id"));
       if (editor.isVisible() || !pin.isEmpty() ||
           !toast.contains(QStringLiteral("Open")) || recent < 0 ||
-          !findRecentSnap(toast.value(recent + 1)) ||
+          !findCaptureHandoff(toast.value(recent + 1)) ||
           QImage(saved).convertToFormat(expected.format()) != expected) {
         error = QStringLiteral("--notify did not announce the saved %1 capture: %2")
                     .arg(fresh ? QStringLiteral("fresh") : QStringLiteral("edited"),
@@ -2870,8 +2808,8 @@ bool runPostCaptureChecks(QString &error, bool autosave) {
       QTest::mouseMove(&fresh, {400, 300});
       QTest::mouseRelease(&fresh, Qt::LeftButton, Qt::NoModifier, {400, 300});
       fresh.waitForExport();
-      const QString id = toast.value(toast.indexOf(QStringLiteral("--recent")) + 1);
-      const auto recent = findRecentSnap(id);
+      const QString id = toast.value(toast.indexOf(QStringLiteral("--capture-id")) + 1);
+      const auto recent = findCaptureHandoff(id);
       if (!recent || !toast.contains(QStringLiteral("Save")) ||
           !toast.contains(QStringLiteral("Edit")) || toast.contains(QStringLiteral("Open")) ||
           !QDir(savedDirectory.path()).entryList({QStringLiteral("*.png")}, QDir::Files).isEmpty() ||
@@ -2923,8 +2861,10 @@ bool runPostCaptureChecks(QString &error, bool autosave) {
         }
       }
       const QStringList files = QDir(savedDirectory.path()).entryList({QStringLiteral("*.png")}, QDir::Files);
+      // Silent editor Copy leaves the original notification's document alone.
+      const QImage savedExpected = notificationSave ? fresh.renderCurrentOutput() : expected;
       if (files.size() != 1 ||
-          QImage(savedDirectory.filePath(files.first())).convertToFormat(expected.format()) != expected) {
+          QImage(savedDirectory.filePath(files.first())).convertToFormat(savedExpected.format()) != savedExpected) {
         error = QStringLiteral("Save lost the copied capture's native pixels or annotations");
         return false;
       }
@@ -3252,7 +3192,7 @@ bool runPostCaptureChecks(QString &error, bool autosave) {
     const auto document = copyPinDocument(pin, error);
     OperationLog log;
     if (!document || !loadOperationLog(operationLogPath(document->path()), log, error) ||
-        !findRecentSnap(log.recentId)) {
+        !findCaptureHandoff(log.captureId)) {
       error = QStringLiteral("Explicit pinning did not retain a recent document");
       return false;
     }
@@ -3261,12 +3201,12 @@ bool runPostCaptureChecks(QString &error, bool autosave) {
     CaptureEditor pinnedEditor(restored, Mode::File, QuickOutputMode::None, log);
     pinnedEditor.setPinDocument(document);
     pinnedEditor.show();
-    const qsizetype count = listRecentSnaps(false).size();
+    const qsizetype count = listCaptureHandoffsForTest().size();
     QTest::keyClick(&pinnedEditor, Qt::Key_Escape);
     if (!QTest::qWaitFor([&] { return !pinnedEditor.isVisible(); }, 5000) ||
         pinnedEditor.annotationCountForTest() != editor.annotationCountForTest() ||
         pinnedEditor.renderCurrentOutput() != editor.renderCurrentOutput() ||
-        listRecentSnaps(false).size() != count) {
+        listCaptureHandoffsForTest().size() != count) {
       error = QStringLiteral("Editing a pin flattened its layers or duplicated its recent entry");
       return false;
     }
@@ -3328,18 +3268,12 @@ bool runQuickOutputChecks(QString &error) {
     error = QStringLiteral("quickOutput did not save exactly one PNG");
     return false;
   }
-  const auto recents = listRecentSnaps(false);
   CaptureData reopened;
   describeFileCapture(reopened,
                       QImage(QDir(directory.path()).filePath(files.constFirst())), {});
-  OperationLog log;
-  if (recents.isEmpty() ||
-      reopened.previewSize != QSize(16, 12) ||
-      reopened.source.convertToFormat(image.format()) != image ||
-      !loadOperationLog(recents.constFirst().logPath, log, error) ||
-      log.previewSize != QSize(16, 12) ||
-      QImage(recents.constFirst().sourcePath).convertToFormat(image.format()) != image) {
-    error = QStringLiteral("Instant fullscreen output was not remembered at its native scale");
+  if (reopened.previewSize != QSize(16, 12) ||
+      reopened.source.convertToFormat(image.format()) != image) {
+    error = QStringLiteral("Instant fullscreen output lost its native scale");
     return false;
   }
   return true;
@@ -6360,245 +6294,6 @@ bool runOpLogSmoke(QApplication &application, QString &error) {
   return true;
 }
 
-/**
- * The recents shelf: finishing a capture moves its working document onto the
- * shelf, the next select overlay shows it as a small card on the right that
- * fans out under the pointer, and clicking the card asks main() to reopen it
- * with its layers still editable. Reopening and finishing again replaces the
- * entry rather than adding a twin, and the shelf never grows past its limit.
- */
-bool runRecentsShelfSmoke(QApplication &application, QString &error) {
-  QTemporaryDir shelf;
-  QTemporaryDir screenshots;
-  if (!shelf.isValid() || !screenshots.isValid()) {
-    error = QStringLiteral("Could not create recents shelf directories");
-    return false;
-  }
-  const QByteArray previousShelf = qgetenv("OMACAP_RECENT_DIR");
-  const QByteArray previousDir = qgetenv("OMACAP_SCREENSHOT_DIR");
-  qputenv("OMACAP_RECENT_DIR", shelf.path().toUtf8());
-  qputenv("OMACAP_SCREENSHOT_DIR", screenshots.path().toUtf8());
-  const auto restoreEnv = qScopeGuard([&] {
-    qputenv("OMACAP_RECENT_DIR", previousShelf);
-    if (previousDir.isEmpty())
-      qunsetenv("OMACAP_SCREENSHOT_DIR");
-    else
-      qputenv("OMACAP_SCREENSHOT_DIR", previousDir);
-  });
-
-  CaptureData capture;
-  capture.monitor.name = QStringLiteral("TEST");
-  capture.monitor.geometry = {0, 0, 800, 600};
-  capture.monitor.pixelSize = {800, 600};
-  capture.monitor.scale = 1.0;
-  capture.source = QImage(800, 600, QImage::Format_ARGB32_Premultiplied);
-  capture.source.fill(QColor(QStringLiteral("#204060")));
-  {
-    QPainter painter(&capture.source);
-    painter.fillRect(QRect(100, 100, 200, 120), QColor(QStringLiteral("#ffaa00")));
-  }
-  capture.previewSize = capture.source.size();
-
-  // An empty shelf draws nothing and claims no pointer.
-  {
-    CaptureEditor editor(capture, CaptureEditor::CaptureMode::Region);
-    editor.resize(800, 600);
-    editor.show();
-    application.processEvents();
-    if (editor.waitForRecents() || editor.recentCountForTest() != 0 ||
-        !editor.recentCardRectForTest(0).isNull()) {
-      error = QStringLiteral("Empty shelf reported cards");
-      return false;
-    }
-    editor.close();
-  }
-
-  // Opening annotation and dismissing it without any edits or output still
-  // completes a capture. Cancelling the empty picker above added nothing.
-  {
-    CaptureEditor untouched(capture, CaptureEditor::CaptureMode::Fullscreen);
-    untouched.show();
-    QTest::keyClick(&untouched, Qt::Key_Escape);
-    if (!QTest::qWaitFor([&] { return !untouched.isVisible(); }, 5000)) {
-      error = QStringLiteral("Could not dismiss an untouched capture");
-      return false;
-    }
-  }
-  const auto untouched = listRecentSnaps(false);
-  if (untouched.size() != 1 ||
-      QImage(untouched.constFirst().sourcePath).convertToFormat(capture.source.format()) != capture.source) {
-    error = QStringLiteral("An untouched capture was not remembered, or cancelling a selection was");
-    return false;
-  }
-  removeRecentSnap(untouched.constFirst());
-
-  // Take a capture with a layer on it and save: the working document should
-  // land on the shelf with a thumbnail and a log that knows its preview size.
-  QImage firstOutput;
-  {
-    CaptureEditor editor(capture, CaptureEditor::CaptureMode::Fullscreen);
-    editor.resize(800, 600);
-    editor.show();
-    application.processEvents();
-    QTest::keyClick(&editor, Qt::Key_A);
-    QTest::mousePress(&editor, Qt::LeftButton, Qt::NoModifier, QPoint(200, 200));
-    QTest::mouseMove(&editor, QPoint(400, 320), 20);
-    QTest::mouseRelease(&editor, Qt::LeftButton, Qt::NoModifier,
-                        QPoint(400, 320));
-    application.processEvents();
-    if (editor.annotationCountForTest() != 1) {
-      error = QStringLiteral("Recents smoke could not draw an arrow");
-      return false;
-    }
-    firstOutput = editor.renderCurrentOutput();
-    editor.setProcessLauncherForTest([](const QString &, const QStringList &) { return true; });
-    QTest::keyClick(&editor, Qt::Key_S, Qt::ControlModifier);
-    editor.waitForExport();
-  }
-  QVector<RecentSnap> shelved = listRecentSnaps(true);
-  if (shelved.size() != 1 || shelved.constFirst().thumbnail.isNull() ||
-      shelved.constFirst().logPath.isEmpty() ||
-      !QFile::exists(shelved.constFirst().sourcePath)) {
-    error = QStringLiteral("Saving did not shelve the working document (%1)")
-                .arg(shelved.size());
-    return false;
-  }
-  if (shelved.constFirst().thumbnail.width() > kRecentThumbEdge ||
-      shelved.constFirst().thumbnail.height() > kRecentThumbEdge) {
-    error = QStringLiteral("Shelf thumbnail was not shrunk");
-    return false;
-  }
-  {
-    OperationLog log;
-    if (!loadOperationLog(shelved.constFirst().logPath, log, error))
-      return false;
-    if (log.previewSize != QSize(800, 600)) {
-      error = QStringLiteral("Shelved log did not record its preview size");
-      return false;
-    }
-  }
-  const QString firstSource = shelved.constFirst().sourcePath;
-
-  // The next select overlay shows the card; hovering fans it out; a click
-  // asks to reopen it without capturing.
-  {
-    CaptureEditor editor(capture, CaptureEditor::CaptureMode::Region);
-    editor.resize(800, 600);
-    editor.show();
-    application.processEvents();
-    if (!editor.waitForRecents() || editor.recentCountForTest() != 1) {
-      error = QStringLiteral("Select overlay did not list the shelved capture");
-      return false;
-    }
-    if (editor.recentsOpenForTest()) {
-      error = QStringLiteral("Shelf opened before the pointer reached it");
-      return false;
-    }
-    const QRectF stacked = editor.recentCardRectForTest(0);
-    if (stacked.isNull() || stacked.right() > 800 || stacked.left() < 600) {
-      error = QStringLiteral("Shelf card is not along the right edge (%1,%2)")
-                  .arg(stacked.left())
-                  .arg(stacked.right());
-      return false;
-    }
-    QTest::mouseMove(&editor, QPoint(100, 300), 20);
-    application.processEvents();
-    if (editor.measurementText().isEmpty()) {
-      error = QStringLiteral("Selection readout disappeared outside the shelf");
-      return false;
-    }
-    QTest::mouseMove(&editor, stacked.center().toPoint(), 20);
-    application.processEvents();
-    if (!editor.recentsOpenForTest()) {
-      error = QStringLiteral("Hovering the stack did not fan the shelf out");
-      return false;
-    }
-    if (!editor.measurementText().isEmpty()) {
-      error = QStringLiteral("Selection readout overlapped the open shelf");
-      return false;
-    }
-    const QRectF fanned = editor.recentCardRectForTest(0);
-    // Dragging from inside the open shelf must not start a region.
-    QTest::mouseClick(&editor, Qt::LeftButton, Qt::NoModifier,
-                      QPoint(qRound(fanned.left()) - 8,
-                             qRound(fanned.bottom()) + 4));
-    application.processEvents();
-    if (!editor.selectingForTest() || !editor.currentSelection().isEmpty()) {
-      error = QStringLiteral("A click in the shelf margin started a selection");
-      return false;
-    }
-    QTest::mouseClick(&editor, Qt::LeftButton, Qt::NoModifier,
-                      fanned.center().toPoint());
-    editor.waitForReopen();
-    // Reopened in place: same surface, same picture, layer still undoable.
-    if (editor.selectingForTest() || !editor.isVisible() ||
-        editor.annotationCountForTest() != 1 ||
-        editor.renderCurrentOutput().convertToFormat(QImage::Format_ARGB32) !=
-            firstOutput.convertToFormat(QImage::Format_ARGB32)) {
-      error = QStringLiteral("Clicking the card did not reopen it in place");
-      return false;
-    }
-    QTest::keyClick(&editor, Qt::Key_Z, Qt::ControlModifier);
-    application.processEvents();
-    if (editor.annotationCountForTest() != 0) {
-      error = QStringLiteral("Reopened capture lost its undo history");
-      return false;
-    }
-    // Finishing again replaces the shelf entry instead of shelving a twin.
-    editor.setProcessLauncherForTest([](const QString &, const QStringList &) { return true; });
-    QTest::keyClick(&editor, Qt::Key_S, Qt::ControlModifier);
-    editor.waitForExport();
-
-    // Far from the shelf, it folds back.
-    CaptureEditor again(capture, CaptureEditor::CaptureMode::Region);
-    again.resize(800, 600);
-    again.show();
-    application.processEvents();
-    again.waitForRecents();
-    QTest::mouseMove(&again, again.recentCardRectForTest(0).center().toPoint(),
-                     20);
-    application.processEvents();
-    QTest::mouseMove(&again, QPoint(100, 300), 20);
-    application.processEvents();
-    if (again.recentsOpenForTest()) {
-      error = QStringLiteral("Shelf stayed open after the pointer left");
-      return false;
-    }
-    again.close();
-  }
-  shelved = listRecentSnaps(false);
-  if (shelved.size() != 1 || shelved.constFirst().sourcePath == firstSource ||
-      QFile::exists(firstSource)) {
-    error = QStringLiteral("Finishing a reopened capture did not replace its "
-                           "shelf entry (%1 entries)")
-                .arg(shelved.size());
-    return false;
-  }
-
-  // The shelf holds the newest five and no more.
-  for (int index = 0; index < kRecentSnapLimit + 2; ++index) {
-    QString saveError;
-    if (!recordRecentSnap(capture.source, {}, capture.source, saveError)) {
-      error = QStringLiteral("Could not fill the shelf: %1").arg(saveError);
-      return false;
-    }
-    QThread::msleep(2); // distinct millisecond stamps
-  }
-  const QVector<RecentSnap> full = listRecentSnaps(false);
-  if (full.size() != kRecentSnapLimit) {
-    error = QStringLiteral("Shelf kept %1 entries, wanted %2")
-                .arg(full.size())
-                .arg(kRecentSnapLimit);
-    return false;
-  }
-  for (int index = 1; index < full.size(); ++index) {
-    if (full.at(index - 1).stampMs < full.at(index).stampMs) {
-      error = QStringLiteral("Shelf is not newest first");
-      return false;
-    }
-  }
-  return true;
-}
 
 /**
  * omarchy-notification-send treats everything after --exec as the click
@@ -12725,7 +12420,7 @@ int main(int argc, char **argv) {
   QTemporaryDir smokeShelf;
   if (!smokeShelf.isValid())
     return 18;
-  qputenv("OMACAP_RECENT_DIR", smokeShelf.path().toUtf8());
+  qputenv("OMACAP_HANDOFF_DIR", smokeShelf.path().toUtf8());
   // Remembered UI state, such as a closed shortcuts card, stays out of the
   // developer's own.
   QTemporaryDir smokeState;
@@ -13304,14 +12999,11 @@ int main(int argc, char **argv) {
     qWarning().noquote() << snapshotError;
     return 98;
   }
-  if (!runRecentPersistenceSmoke(application, snapshotError)) {
+  if (!runCaptureHandoffSmoke(application, snapshotError)) {
     qWarning().noquote() << snapshotError;
     return 1;
   }
-  if (!runRecentsShelfSmoke(application, snapshotError)) {
-    qWarning().noquote() << snapshotError;
-    return 120;
-  }
+
   if (!runNotificationArgvCheck(snapshotError)) {
     qWarning().noquote() << snapshotError;
     return 83;

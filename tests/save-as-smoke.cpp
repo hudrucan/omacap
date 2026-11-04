@@ -2,7 +2,7 @@
 #include "save-as-smoke.hpp"
 #include "capture.hpp"
 #include "editor.hpp"
-#include "recent-snaps.hpp"
+#include "capture-handoff-test.hpp"
 #include "pin-file.hpp"
 
 #include <QApplication>
@@ -62,14 +62,14 @@ bool runSaveAsSmoke(QString &error) {
     error = QStringLiteral("Could not create Save As test directory");
     return false;
   }
-  const QByteArray previousRecents = qgetenv("OMACAP_RECENT_DIR");
+  const QByteArray previousRecents = qgetenv("OMACAP_HANDOFF_DIR");
   const auto restoreRecents = qScopeGuard([&] {
     if (previousRecents.isNull())
-      qunsetenv("OMACAP_RECENT_DIR");
+      qunsetenv("OMACAP_HANDOFF_DIR");
     else
-      qputenv("OMACAP_RECENT_DIR", previousRecents);
+      qputenv("OMACAP_HANDOFF_DIR", previousRecents);
   });
-  qputenv("OMACAP_RECENT_DIR", directory.filePath(QStringLiteral("recent")).toUtf8());
+  qputenv("OMACAP_HANDOFF_DIR", directory.filePath(QStringLiteral("capture-id")).toUtf8());
   const QString target = directory.filePath(QStringLiteral("chosen.png"));
   QImage original(100, 80, QImage::Format_ARGB32);
   original.fill(Qt::red);
@@ -225,8 +225,8 @@ bool runSaveAsSmoke(QString &error) {
       error = QStringLiteral("Save As lost the capture's logical size in its standalone PNG");
       return false;
     }
-    const auto recent = findRecentSnap(editor.recentId_, &error);
-    const qsizetype recentCount = listRecentSnaps(false).size();
+    const auto recent = findCaptureHandoff(editor.captureId_, &error);
+    const qsizetype recentCount = listCaptureHandoffsForTest().size();
     OperationLog savedLog;
     if (!recent || !loadOperationLog(recent->logPath, savedLog, error) ||
         savedLog.index != beforeNudge || savedLog.ops.size() != beforeNudge ||
@@ -237,7 +237,7 @@ bool runSaveAsSmoke(QString &error) {
     OperationLog previewLog;
     if (previews.isEmpty() ||
         !loadOperationLog(operationLogPath(previews.last()), previewLog, error) ||
-        previewLog.savedPath != output || previewLog.recentId != savedLog.recentId ||
+        previewLog.savedPath != output || previewLog.captureId != savedLog.captureId ||
         QImage(previews.last()) != QImage(output)) {
       error = QStringLiteral("Saved preview lost its file, pixels, or capture identity");
       return false;
@@ -267,11 +267,11 @@ bool runSaveAsSmoke(QString &error) {
       error = QStringLiteral("Save As did not retire the originating preview and close");
       return false;
     }
-    const auto updatedRecent = findRecentSnap(editor.recentId_, &error);
+    const auto updatedRecent = findCaptureHandoff(editor.captureId_, &error);
     if (!updatedRecent ||
         !loadOperationLog(updatedRecent->logPath, savedLog, error) ||
-        savedLog.index != savedIndex || savedLog.recentId != editor.recentId_ ||
-        listRecentSnaps(false).size() != recentCount || QFile::exists(recent->sourcePath)) {
+        savedLog.index != savedIndex || savedLog.captureId != editor.captureId_ ||
+        listCaptureHandoffsForTest().size() != recentCount || QFile::exists(recent->sourcePath)) {
       error = QStringLiteral("Repeated Save As did not update the same recent capture");
       return false;
     }

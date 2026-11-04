@@ -28,31 +28,22 @@ reading its corresponding worker:
 |---|---|
 | `captureWatcher_` | Reads window/monitor pixels via `captureMonitorPixels` |
 | `ocrWatcher_` | Renders the OCR crop and runs `tesseract` |
-| `finishWatcher_` | Renders/encodes the export, copies/saves/launches the preview, then records the recent document |
+| `finishWatcher_` | Renders/encodes the export, copies/saves/launches the preview, then publishes temporary action data |
 | `snapshotWatcher_` | Writes the crash-recovery working snapshot + operation log |
 | `pinWatcher_` | Renders and launches a pinned compositor window, then records the capture |
-| `recentsWatcher_` | Lists and decodes thumbnails for the recents shelf |
 | `backdropWatcher_` | Decodes an optional user-supplied backdrop image |
 | `highlighterProbeWatcher_` | Detects a nearby screenshot text row for highlighter Snap mode |
 
-Editor dismissal also uses a worker, tracked by `dismissFuture_`, to return edits
-to an originating pin and retain the recent document. Output workers publish
-their result through `QPromise` as soon as output is ready: `resultReadyAt` closes
-the overlay before full-monitor history compression. The worker continues saving
-the pristine source/log/thumbnail, and editor destruction drains it after the
-window has closed. Teardown waits on futures without dispatching GUI events.
-On a failed recent write after successful output, the worker drains autosave
-and attempts to persist the final pristine source and log at the existing
-working paths, retaining them instead of deleting the recovery document.
-`main()` releases the instance lock first, so a rapid second
-capture cannot terminate the pending save or be mistaken for cancelling an overlay.
+Editor dismissal uses `dismissFuture_` only to return edits to an originating
+pin. A plain editor closes without retaining screenshot history. Output workers
+publish their result through `QPromise` before finishing any temporary Edit data;
+the closed surface drains these value-only workers after releasing the instance
+lock. A failed handoff write preserves the working source/log for recovery.
 
-A per-capture reservation is acquired before launching/updating the preview.
-Immediate Edit and shelf-loading workers wait for it to finish, preserving the
-original layers even while history is being encoded. Different captures encode
-independently; only thumbnail publication and pruning use the shared shelf lock.
-The thumbnail is published last, after its source and log are complete. No
-full-resolution file is moved or PNG-encoded in the completion signal handler.
+A per-capture reservation is acquired before launching a notification or preview.
+An immediate Edit waits on a worker until source, operation log, and thumbnail
+have been published. Thumbnail publication and expiry cleanup share a short lock;
+full-resolution encoding never runs in a GUI completion handler.
 
 `src/scroll-capture.cpp` follows the same rule with a plain `QFuture<void>`:
 the capture loop (grab → crop → classify → accumulate) runs on a worker
@@ -89,7 +80,7 @@ originating pin's replacement also run on the output worker. Closing or destroyi
 pending chooser/focus callbacks and closes its chooser; an already accepted
 write owns copied state; destruction drains it after the editor is hidden and
 the instance lock is released, before application teardown. The worker reports
-the completed save before retaining the editable capture in recents. Save As
+the completed save before publishing its temporary Edit document. Save As
 is unavailable during active drawing/panning gestures or initial backdrop loading.
 
 ## Pointer motion on large monitors
@@ -146,11 +137,6 @@ Two places broke this rule despite being written after the pattern was
 established, which is worth remembering: the pattern has to be followed on
 purpose every time, since nothing enforces it automatically.
 
-- **`CaptureEditor::reopenRecent()`** loaded a shelved capture's full-resolution
-  source with a synchronous `QImage::load()` directly in the shelf's click
-  handler — for a stitched scroll capture, tens of megapixels, on the UI
-  thread. Fixed to decode on the worker pool (`reopenWatcher_`), the same
-  shape as every other watcher above.
 - **`CaptureEditor::pinSnapshot()`** rendered the pin image on a worker but
   then PNG-encoded and wrote it to disk in the `pinWatcher_::finished` slot —
   back on the UI thread, after the watcher had already proven the async
