@@ -54,8 +54,7 @@ void configureCaptureCommandLine(QCommandLineParser &parser, bool beforeQt) {
       "\n"
       "With no target, drag for a region, click a window, or click open "
       "space for\nthe full focused monitor. Captures copy to the clipboard, "
-      "and show a\npreview for 7 seconds; use its pin button or Ctrl+P to keep "
-      "it, or Edit to annotate.\n"
+      "and show a\nnotification; click it to open the fullscreen editor.\n"
       "Use Save to keep a file, or --editor to edit before output.\n"
       "\n"
       "Only one capture overlay runs at a time. Starting omacap again while "
@@ -84,10 +83,10 @@ void configureCaptureCommandLine(QCommandLineParser &parser, bool beforeQt) {
   parser.addOption(regionOption);
   const QCommandLineOption copyOption(
       QStringLiteral("copy"),
-      QStringLiteral("Copy the capture without opening an editor or pin."));
+      QStringLiteral("Copy the capture without opening an editor."));
   const QCommandLineOption saveOption(
       QStringLiteral("save"),
-      QStringLiteral("Save the capture without opening an editor or pin."));
+      QStringLiteral("Save the capture without opening an editor."));
   parser.addOption(copyOption);
   parser.addOption(saveOption);
   const QCommandLineOption notifyOption(
@@ -110,15 +109,6 @@ void configureCaptureCommandLine(QCommandLineParser &parser, bool beforeQt) {
       QStringLiteral("Open the current clipboard image in the annotation "
                      "editor instead of capturing the screen."));
   parser.addOption(clipboardOption);
-  const QCommandLineOption pinOption(
-      QStringLiteral("pin"),
-      QStringLiteral("Show an image as a floating window pinned on every workspace."),
-      QStringLiteral("path"));
-  parser.addOption(pinOption);
-  QCommandLineOption previewOption(
-      QStringLiteral("preview"), QString(), QStringLiteral("path"));
-  previewOption.setFlags(QCommandLineOption::HiddenFromHelp);
-  parser.addOption(previewOption);
   const QCommandLineOption editorOption(
       QStringLiteral("editor"),
       QStringLiteral("Edit before output, using overlay (fullscreen) or "
@@ -135,14 +125,10 @@ void configureCaptureCommandLine(QCommandLineParser &parser, bool beforeQt) {
                                   QStringLiteral("token"));
   handoffToken.setFlags(QCommandLineOption::HiddenFromHelp);
   parser.addOption(handoffToken);
-  QCommandLineOption pinDocument(QStringLiteral("pin-document"), QString(),
-                                 QStringLiteral("path"));
-  pinDocument.setFlags(QCommandLineOption::HiddenFromHelp);
-  parser.addOption(pinDocument);
   const QCommandLineOption scrollOption(
       QStringLiteral("scroll"),
       QStringLiteral("Capture a scrolling region and stitch it into one tall "
-                     "image, then copy it and show a timed preview."));
+                     "image, then copy it and show a notification."));
   parser.addOption(scrollOption);
   parser.addPositionalArgument(
       QStringLiteral("target"),
@@ -154,8 +140,7 @@ void configureCaptureCommandLine(QCommandLineParser &parser, bool beforeQt) {
 bool windowedEditorRequested(const QCommandLineParser &parser, bool defaultWindow) {
   const QString mode = parser.value(QStringLiteral("editor")).trimmed().toLower();
   const bool window = mode.isEmpty() ? defaultWindow : mode == QStringLiteral("window");
-  if (!window || parser.isSet(QStringLiteral("pin")) ||
-      parser.isSet(QStringLiteral("preview")))
+  if (!window)
     return false;
   if (!parser.value(QStringLiteral("file")).isEmpty() ||
       parser.isSet(QStringLiteral("clipboard")))

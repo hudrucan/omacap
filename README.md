@@ -56,9 +56,7 @@ or run `omacap --notify` to use it without a binding.
 ## Use
 
 **Drag** an area, **click** a window, or click empty desktop space for the focused monitor.
-With `--notify`, click the notification to open the fullscreen editor.
-Without it, a floating preview offers editing, copying, pinning, and file drag;
-it fades after 7 seconds of idle time. Hovering pauses the countdown.
+Captures copy automatically. Click the notification to open the fullscreen editor.
 
 The editor's main action is **Copy**. Save lives under **… → Save**.
 Press **?** or choose **… → Shortcuts** for keyboard help.
@@ -71,7 +69,6 @@ Press **?** or choose **… → Shortcuts** for keyboard help.
 | R / E | Rectangle / ellipse |
 | T / D / O | Text / redact / OCR |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
-| Ctrl+P | Pin on screen |
 | W | Switch editor between overlay and window |
 | ? | Toggle keyboard help |
 | Esc | Dismiss a menu or close |
@@ -82,7 +79,7 @@ Press **?** or choose **… → Shortcuts** for keyboard help.
 ![Omacap's More menu](assets/preview-more.png)
 
 Line, highlighter, numbered markers, spotlight, cut band, OCR, backdrops, redo,
-pinning, Copy + Save, and Save are available under **…**.
+Copy + Save and Save are available under **…**.
 
 </details>
 
@@ -129,7 +126,7 @@ These are the defaults. Set `mode = window` for a normal compositor window.
 <details>
 <summary><strong>Temporary data</strong></summary>
 
-Omacap keeps no screenshot history. Notification and preview actions use temporary
+Omacap keeps no screenshot history. Notifications use temporary
 source images, edit logs, and thumbnails under `$XDG_RUNTIME_DIR/omacap/handoffs/`.
 Documents older than 15 minutes are pruned when a new one is published.
 Copy from the editor creates no additional handoff document.

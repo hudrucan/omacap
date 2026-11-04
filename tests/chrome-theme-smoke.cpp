@@ -2,7 +2,6 @@
 #include "capture.hpp"
 #include "chrome-theme.hpp"
 #include "editor.hpp"
-#include "pin-interaction-smoke.hpp"
 
 #include <QApplication>
 #include <QColor>
@@ -250,8 +249,7 @@ bool runChromeThemeSmoke(const QString &outputRoot, QString &error) {
               .arg(selector.measurementText());
       return false;
     }
-    return runPinThemeRenderingSmoke(
-        outputRoot + QStringLiteral("-pin-theme-%1.png").arg(name), error);
+    return true;
   };
   if (!checkEditor(QStringLiteral("dark")))
     return false;

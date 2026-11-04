@@ -3,7 +3,6 @@
 #include "editor.hpp"
 #include "shortcut-guide.hpp"
 #include "chrome-theme.hpp"
-#include "pin-file.hpp"
 
 #include "stitch.hpp"
 #include "icons.hpp"
@@ -764,7 +763,7 @@ QPointF centeredCreationStart(CaptureEditor::Tool tool, const QPointF &center,
 }
 
 namespace {
-// Worker-only publication for a notification or preview Edit action.
+// Worker-only publication for notification editing.
 bool publishCaptureHandoff(CaptureHandoffWriter &writer, const QImage &source,
                      const OperationLog &log,
                      const QImage &rendered,
@@ -979,18 +978,6 @@ CaptureEditor::CaptureEditor(CaptureData capture, CaptureMode mode,
             emit captureReady(true, {});
           });
 
-  connect(&pinWatcher_, &QFutureWatcher<PinResult>::resultReadyAt, this, [this] {
-    pinPending_ = false;
-    const PinResult result = pinWatcher_.result();
-    if (result.path.isEmpty()) {
-      setStatus(result.error.isEmpty()
-                    ? QStringLiteral("Could not render pinned capture")
-                    : result.error);
-      return;
-    }
-    close();
-  });
-
   captureMode_ = mode;
   smartMode_ = mode == CaptureMode::Smart;
   liveMonitor_ = capture_.monitor;
@@ -1056,10 +1043,7 @@ CaptureEditor::~CaptureEditor() {
   // Drain those value-only workers after the surface has gone; main releases
   // the instance lock first so another capture cannot terminate this save.
   disconnect(&finishWatcher_, nullptr, this, nullptr);
-  disconnect(&pinWatcher_, nullptr, this, nullptr);
   finishWatcher_.waitForFinished();
-  pinWatcher_.waitForFinished();
-  dismissFuture_.waitForFinished();
   // An accepted Save As owns its pixels. Finish it before application/static
   // teardown, after the editor surface and instance lock have been released.
   saveAsFuture_.waitForFinished();
@@ -1082,7 +1066,6 @@ bool CaptureEditor::eventFilter(QObject *watched, QEvent *event) {
   if (watched == textEditor_ && event->type() == QEvent::KeyPress) {
     auto *key = static_cast<QKeyEvent *>(event);
     if (key->matches(QKeySequence::SaveAs) ||
-        (key->key() == Qt::Key_P && key->modifiers() == Qt::ControlModifier) ||
         (key->key() == Qt::Key_W && key->modifiers() == Qt::MetaModifier)) {
       keyPressEvent(key);
       return true;
@@ -2627,7 +2610,6 @@ CaptureEditor::toolbarButtons(QVector<qreal> *groupDividers,
         {QStringLiteral("tool-ocr"), QStringLiteral("Copy text")},
         {QStringLiteral("background"), QStringLiteral("Backdrop")},
         {QStringLiteral("redo"), QStringLiteral("Redo")},
-        {QStringLiteral("pin"), QStringLiteral("Pin")},
         {QStringLiteral("both"), QStringLiteral("Copy + save")},
         {QStringLiteral("save"), QStringLiteral("Save")},
         {QStringLiteral("help"), QStringLiteral("Shortcuts")}};
@@ -3325,7 +3307,6 @@ void CaptureEditor::handOffEditor(bool toWindow) {
   const OperationLog log = currentOperationLog();
   const QString program = QCoreApplication::applicationFilePath();
   const auto launcher = processLauncher_;
-  const auto pinDocument = pinDocument_;
   const QString monitor = windowedPresentation_ && screen()
                               ? screen()->name() : capture_.monitor.name;
   auto *watcher = new QFutureWatcher<QString>(this);
@@ -3342,7 +3323,7 @@ void CaptureEditor::handOffEditor(bool toWindow) {
       setStatus(error);
     }
   });
-  watcher->setFuture(QtConcurrent::run([source, log, program, toWindow, launcher, pendingSnapshot, monitor, pinDocument]() mutable {
+  watcher->setFuture(QtConcurrent::run([source, log, program, toWindow, launcher, pendingSnapshot, monitor]() mutable {
     // A replacement process waits only briefly for the instance lock.
     // Finish existing persistence here, without blocking the GUI, before it
     // can ask this process to exit. Coalesced autosaves are suppressed above.
@@ -3360,13 +3341,9 @@ void CaptureEditor::handOffEditor(bool toWindow) {
                                             : QStringLiteral("overlay"),
                                    QStringLiteral("--handoff-monitor"), monitor,
                                    QStringLiteral("--handoff-token"), token};
-      if (pinDocument)
-        arguments << QStringLiteral("--pin-document") << pinDocument->path();
       const bool launched = launcher ? launcher(program, arguments)
                                     : QProcess::startDetached(program, arguments);
       if (launched) {
-        if (pinDocument)
-          pinDocument->preserveForEditor();
         return QString();
       }
       error = QStringLiteral("Could not start omacap");
@@ -3376,43 +3353,6 @@ void CaptureEditor::handOffEditor(bool toWindow) {
     QFile::remove(path + QStringLiteral(".handoff"));
     return error;
   }));
-}
-
-void CaptureEditor::pinSnapshot() {
-  if (busy_ || pinPending_ || selection_.isEmpty())
-    return;
-
-  if (pinDocument_) {
-    handleEscape();
-    return;
-  }
-
-  pinPending_ = true;
-  setStatus(QStringLiteral("Preparing pinned capture…"));
-  const CaptureData captureCopy = capture_;
-  const QImage source = pristineSource_;
-  const OperationLog log = currentOperationLog();
-  const QVector<Annotation> annotations = annotations_;
-  const QRectF selection = selection_;
-  const BackgroundStyle background = backgroundStyle_;
-  const bool imageShadow = imageShadow_;
-  const CanvasBoundaryMode canvasBoundary = canvasBoundaryMode_;
-  const QImage backdrop = customBackdrop_;
-  const auto launcher = processLauncher_;
-  pinWatcher_.setFuture(QtConcurrent::run(
-      [captureCopy, source, log, annotations, selection, background,
-       imageShadow, canvasBoundary, backdrop, launcher](QPromise<PinResult> &completion) {
-        PinResult result;
-        CaptureHandoffWriter handoff(log.captureId);
-        const QImage image =
-            renderCapture(captureCopy, selection, annotations, background,
-                          imageShadow, canvasBoundary, backdrop);
-        result.path = launchPinnedCapture(
-            image, renderedCaptureLogicalSize(captureCopy, image.size()),
-            false, PinLifetime::Persistent, result.error, launcher, log.captureId);
-        completion.addResult(result);
-        publishCaptureHandoff(handoff, source, log, image);
-      }));
 }
 
 void CaptureEditor::startCapture(CaptureMode mode, bool includeWindows) {
@@ -3488,8 +3428,8 @@ void CaptureEditor::enterExport() {
                                 ? OutputMode::Copy
                             : quickOutputMode_ == QuickOutputMode::Save
                                 ? OutputMode::Save
-                            : quickOutputMode_ == QuickOutputMode::CopyAndPreview
-                                ? OutputMode::CopyAndPreview
+                            : quickOutputMode_ == QuickOutputMode::CopyAndNotify
+                                ? OutputMode::CopyAndNotify
                                 : OutputMode::Both;
   // Fullscreen can arrive here during construction; launch only after the
   // caller has finished setting up the surface and its event loop.
@@ -3499,7 +3439,7 @@ void CaptureEditor::enterExport() {
 void CaptureEditor::handleEscape() {
   // Selecting: there is nothing to step back from, so one Esc closes (the
   // launch key then Esc is the quickest "never mind"). Only a drag in flight
-  // is cancelled first. Editing: dismiss and return the document to its pin.
+  // is cancelled first. Editing: close the editor.
   if (phase_ == Phase::Select) {
     if (!dragging_) {
       close();
@@ -3523,7 +3463,7 @@ void CaptureEditor::handleEscape() {
   endNudgeRun();
   acceptText(true);
   cancelEditInteraction();
-  dismissEditor();
+  close();
 }
 
 void CaptureEditor::cancelEditInteraction() {
@@ -3551,53 +3491,6 @@ void CaptureEditor::cancelEditInteraction() {
   setFocus(Qt::OtherFocusReason);
   updatePointerCursor();
   update();
-}
-
-void CaptureEditor::dismissEditor() {
-  if (!pinDocument_) {
-    close();
-    return;
-  }
-  // Return edits only to the originating pin; closing an editor keeps no history.
-  endNudgeRun();
-  busy_ = true;
-  setEnabled(false);
-  setStatus(QStringLiteral("Returning to pinned capture…"));
-  const auto document = pinDocument_;
-  const CaptureData capture = capture_;
-  const QRectF selection = selection_;
-  const auto annotations = annotations_;
-  const auto background = backgroundStyle_;
-  const bool shadow = imageShadow_;
-  const auto boundary = canvasBoundaryMode_;
-  const QImage backdrop = customBackdrop_;
-  const OperationLog log = currentOperationLog();
-  auto *watcher = new QFutureWatcher<QString>(this);
-  connect(watcher, &QFutureWatcher<QString>::resultReadyAt, this, [this, watcher] {
-    const QString error = watcher->result();
-    watcher->deleteLater();
-    busy_ = false;
-    setEnabled(true);
-    if (error.isEmpty())
-      close();
-    else
-      setStatus(error);
-  });
-  dismissFuture_ = QtConcurrent::run(
-      [document, capture, selection, annotations,
-       background, shadow, boundary, backdrop, log](QPromise<QString> &completion) {
-    QString error;
-    const QImage image = renderCapture(capture, selection, annotations, background,
-                                       shadow, boundary, backdrop);
-    // Commit the log last: its atomic replacement tells the pin that both
-    // the preview and the editable document are ready to read.
-    if (document && savePinnedSnapshot(image, document->previewPath(),
-                            renderedCaptureLogicalSize(capture, image.size()),
-                            error, log.captureId))
-      static_cast<void>(saveOperationLog(operationLogPath(document->path()), log, error));
-    completion.addResult(error);
-  });
-  watcher->setFuture(dismissFuture_);
 }
 
 void CaptureEditor::chooseWindow(int index) {
@@ -4036,7 +3929,7 @@ void CaptureEditor::finish(OutputMode mode) {
   QFuture<bool> pendingSnapshot = snapshotWatcher_.future();
   const QString workingSource = snapshotPath_;
   const QString workingLog = workingLogPath();
-  setStatus(mode == OutputMode::Copy || mode == OutputMode::CopyAndPreview
+  setStatus(mode == OutputMode::Copy || mode == OutputMode::CopyAndNotify
                                      ? QStringLiteral("Copying screenshot…")
                                      : QStringLiteral("Saving screenshot…"));
   // Everything the export needs is copied out so the render, the PNG encode
@@ -4055,12 +3948,10 @@ void CaptureEditor::finish(OutputMode mode) {
   const QString appSlug =
       appFilenameSlug(dominantAppClass(capture_.windows, selection_));
   const auto launcher = processLauncher_;
-  const bool savedPreview = phase_ == Phase::Edit;
   finishWatcher_.setFuture(QtConcurrent::run([captureCopy, source, log, selection,
                                               annotations, background,
                                               imageShadow, canvasBoundary,
-                                              backdrop, appSlug, mode, launcher, savedPreview,
-                                              document = pinDocument_,
+                                              backdrop, appSlug, mode, launcher,
                                               snapshotsSuppressed, pendingSnapshot,
                                               workingSource, workingLog](QPromise<FinishResult> &completion) mutable {
     FinishResult result;
@@ -4103,15 +3994,10 @@ void CaptureEditor::finish(OutputMode mode) {
           qWarning().noquote() << recoveryError;
       }
     });
-    const bool autosave = mode == OutputMode::CopyAndPreview &&
+    const bool autosave = mode == OutputMode::CopyAndNotify &&
                           loadOutputConfig(defaultConfigPath()).autosave;
-    if (mode == OutputMode::CopyAndPreview && !autosave) {
-      if (notifySavedCaptures())
-        copiedNotice = copyImageToClipboard(image, result.error);
-      else
-        static_cast<void>(launchPinnedCapture(
-            image, renderedCaptureLogicalSize(captureCopy, image.size()),
-            true, PinLifetime::Timed, result.error, launcher, log.captureId));
+    if (mode == OutputMode::CopyAndNotify && !autosave) {
+      copiedNotice = copyImageToClipboard(image, result.error);
       return;
     }
     const QString exportPath = temporaryExportPath();
@@ -4137,29 +4023,10 @@ void CaptureEditor::finish(OutputMode mode) {
         result.error = error;
         return;
       }
-      // Under --notify, the toast is the completion UI for every saved
-      // capture; otherwise a fresh or edited capture keeps its timed preview.
-      const bool preview = (savedPreview || autosave) && !notifySavedCaptures();
-      if (preview) {
-        const QString pin = launchPinnedCapture(
-            image, renderedCaptureLogicalSize(captureCopy, image.size()), false,
-            PinLifetime::Timed, result.error, launcher, log.captureId, result.saved);
-        if (pin.isEmpty()) {
-          result.error = QStringLiteral("Saved to %1, but could not show its preview: %2")
-                             .arg(result.saved, result.error);
-          return;
-        }
-      } else {
-        sendCaptureNotification(mode == OutputMode::Save
-                                    ? QStringLiteral("Screenshot saved")
-                                    : QStringLiteral("Screenshot saved and copied"),
-                                result.saved, log.captureId, launcher);
-      }
-      if (savedPreview || autosave) {
-        result.savedPreview = true;
-        if (document)
-          document->finishSavedPreview(log, result.saved);
-      }
+      sendCaptureNotification(mode == OutputMode::Save
+                                  ? QStringLiteral("Screenshot saved")
+                                  : QStringLiteral("Screenshot saved and copied"),
+                              result.saved, log.captureId, launcher);
     } else {
       QFile::remove(exportPath);
     }
@@ -4180,14 +4047,8 @@ void CaptureEditor::completeFinish(const FinishResult &result) {
     return;
   }
   snapshotPath_.clear();
-  if (result.savedPreview) {
-    // The worker's toast or saved preview is the completion UI, and the
-    // originating preview already records the saved path.
-    close();
-    return;
-  }
   // Copy from an editor is already an explicit action; closing it is enough.
-  dismissEditor();
+  close();
 }
 
 void CaptureEditor::handleToolbar(const QString &action) {
@@ -4307,9 +4168,7 @@ void CaptureEditor::handleToolbar(const QString &action) {
     undoEdit();
   } else if (action == QStringLiteral("redo")) {
     redoEdit();
-  } else if (action == QStringLiteral("pin"))
-    pinSnapshot();
-  else if (action == QStringLiteral("copy"))
+  } else if (action == QStringLiteral("copy"))
     finish(OutputMode::Copy);
   else if (action == QStringLiteral("both"))
     finish(OutputMode::Both);
@@ -4325,18 +4184,7 @@ void CaptureEditor::handleToolbar(const QString &action) {
 
 void CaptureEditor::closeEvent(QCloseEvent *event) {
   cancelSaveAs();
-  if (!event->spontaneous()) {
-    QWidget::closeEvent(event);
-    return;
-  }
-  // A compositor close of the normal editor window must return its edits to
-  // the pin too. Wait until Qt has left its close handler before Escape can
-  // call close() again; programmatic completion and handoff still close normally.
-  event->ignore();
-  QTimer::singleShot(0, this, [this] {
-    QKeyEvent escape(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
-    keyPressEvent(&escape);
-  });
+  QWidget::closeEvent(event);
 }
 
 void CaptureEditor::keyPressEvent(QKeyEvent *event) {
@@ -4383,13 +4231,6 @@ void CaptureEditor::keyPressEvent(QKeyEvent *event) {
     if (!event->isAutoRepeat())
       shortcutGuide_->setExpanded(!shortcutGuide_->expanded());
     event->accept();
-    return;
-  }
-  if (phase_ == Phase::Edit && event->key() == Qt::Key_P &&
-      event->modifiers() == Qt::ControlModifier) {
-    if (textEditing())
-      acceptText();
-    pinSnapshot();
     return;
   }
   if (event->key() == Qt::Key_Shift && phase_ == Phase::Edit && dragging_) {
@@ -4704,9 +4545,6 @@ void CaptureEditor::keyPressEvent(QKeyEvent *event) {
     tool_ = Tool::Eyedropper;
   } else if (event->key() == Qt::Key_O) {
     runOcr();
-    return;
-  } else if (event->key() == Qt::Key_P) {
-    pinSnapshot();
     return;
   } else if (event->key() == Qt::Key_G) {
     cycleCanvasBoundary(
@@ -6737,7 +6575,7 @@ void CaptureEditor::adoptStitched(const QImage &image) {
   const bool veryLong = image.width() > stitch::kWidelyOpenableEdge ||
                         image.height() > stitch::kWidelyOpenableEdge;
   // Stitching produces native pixels; retain the monitor's logical size
-  // through the same document metadata used when reopening a pinned capture.
+  // through the same document metadata used when reopening a capture.
   OperationLog log;
   log.previewSize = (QSizeF(image.size()) / std::max<qreal>(1.0, liveMonitor_.scale)).toSize();
   adoptImage(image, std::move(log), CaptureMode::Scroll,
@@ -6755,7 +6593,6 @@ void CaptureEditor::adoptStitched(const QImage &image) {
 
 void CaptureEditor::adoptImage(QImage image, OperationLog log, CaptureMode kind,
                                const QString &status) {
-  pinDocument_.reset();
   captureId_ = log.captureId.isEmpty() ? QUuid::createUuid().toString(QUuid::Id128)
                                      : log.captureId;
   // The editor normally works on a region of the frozen screen. Here it is
@@ -6804,7 +6641,6 @@ void CaptureEditor::adoptImage(QImage image, OperationLog log, CaptureMode kind,
 }
 
 void CaptureEditor::returnToSelect() {
-  pinDocument_.reset();
   captureId_ = QUuid::createUuid().toString(QUuid::Id128);
   if (textEditing()) {
     textEditor_->clear();
@@ -7018,7 +6854,7 @@ QVector<QPair<QString, QString>> editorHotkeyEntries() {
           {QStringLiteral("1–8"), QStringLiteral("Color")},
           {QStringLiteral("Wheel"), QStringLiteral("Zoom selected / tool size")},
           {QStringLiteral("D / O"), QStringLiteral("Redact / OCR text")},
-          {QStringLiteral("B / P"), QStringLiteral("Backdrop / Pin on screen")},
+          {QStringLiteral("B"), QStringLiteral("Backdrop")},
           {QStringLiteral("W"), QStringLiteral("Editor to window / overlay")},
           {QStringLiteral("Ctrl+Z"), QStringLiteral("Undo")},
           {QStringLiteral("Ctrl+Shift+Z"), QStringLiteral("Redo")},

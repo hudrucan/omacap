@@ -34,19 +34,12 @@ foreach(PROTOCOL_XML IN LISTS PROTOCOL_XMLS)
 endforeach()
 
 add_library(omacap-core STATIC
-  src/card-stack.hpp
   src/cli-path.cpp
   src/cli-path.hpp
   src/icons.cpp
   src/icons.hpp
   src/instance-lock.cpp
   src/instance-lock.hpp
-  src/overlay-dismissal.cpp
-  src/overlay-dismissal.hpp
-  src/pin-file.cpp
-  src/pin-file.hpp
-  src/pin-layout.cpp
-  src/pin-layout.hpp
   src/png.cpp
   src/png.hpp
   src/capture.cpp
@@ -61,8 +54,6 @@ add_library(omacap-core STATIC
   src/capture-handoff.hpp
   src/output-config.cpp
   src/output-config.hpp
-  src/pin-expiry.cpp
-  src/pin-expiry.hpp
   src/overlay-chrome.cpp
   src/overlay-chrome.hpp
   src/shortcut-guide.cpp
@@ -144,7 +135,7 @@ target_link_libraries(omacap-core PUBLIC
   PkgConfig::Libdeflate
 )
 
-qt_add_executable(omacap src/main.cpp src/pin.cpp src/pin.hpp)
+qt_add_executable(omacap src/main.cpp)
 qt_add_resources(omacap "application-icon"
   PREFIX "/"
   FILES assets/omacap.png
@@ -191,12 +182,6 @@ qt_add_executable(omacap-smoke
   src/overlay-chrome.hpp
   tests/surface-capture-smoke.cpp
   tests/surface-capture-smoke.hpp
-  tests/pin-lifecycle-smoke.cpp
-  tests/pin-lifecycle-smoke.hpp
-  tests/pin-interaction-smoke.cpp
-  tests/pin-interaction-smoke.hpp
-  tests/pin-layout-smoke.cpp
-  tests/pin-layout-smoke.hpp
   src/stitch.cpp
   src/stitch.hpp
   src/auto-capture.cpp

@@ -77,7 +77,7 @@ QString captureHandoffDirectory() {
       return {};
     root = QDir(runtime).filePath(QStringLiteral("handoffs"));
   }
-  // Notification and pin handoffs are temporary, never persistent history.
+  // Notification handoffs are temporary, never persistent history.
   return ensurePrivateDirectory(root) ? QDir::cleanPath(root) : QString();
 }
 

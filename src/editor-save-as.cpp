@@ -2,9 +2,7 @@
 #include "editor.hpp"
 #include "capture.hpp"
 #include "overlay-chrome.hpp"
-#include "pin.hpp"
 #include "capture-handoff.hpp"
-#include "pin-file.hpp"
 
 #include <LayerShellQt/Window>
 #include <QDialog>
@@ -195,28 +193,14 @@ void CaptureEditor::saveAsToPath(const QString &path) {
        background = backgroundStyle_, shadow = imageShadow_,
        boundary = canvasBoundaryMode_, backdrop = customBackdrop_,
        source = pristineSource_, log = currentOperationLog(),
-       document = pinDocument_,
        launcher = processLauncher_, path](QPromise<QString> &completion) {
     CaptureHandoffWriter handoff(log.captureId);
     const QImage image = renderCapture(capture, selection, annotations,
                                        background, shadow, boundary, backdrop);
     QString error;
     if (savePngFile(image, path, error)) {
-      // Without --notify, the saved file keeps its timed preview.
-      bool announced = true;
-      if (notifySavedCaptures()) {
-        sendCaptureNotification(QStringLiteral("Screenshot saved"), path,
-                                log.captureId, launcher);
-      } else if (launchPinnedCapture(
-                     image, renderedCaptureLogicalSize(capture, image.size()), false,
-                     PinLifetime::Timed, error, launcher, log.captureId, path)
-                     .isEmpty()) {
-        announced = false;
-        error = QStringLiteral("Saved to %1, but could not show its preview: %2")
-                    .arg(path, error);
-      }
-      if (announced && document)
-        document->finishSavedPreview(log, path);
+      sendCaptureNotification(QStringLiteral("Screenshot saved"), path,
+                              log.captureId, launcher);
     }
     // Close as soon as the file is announced; retain the editable source and
     // log afterward, just as other completed captures do.

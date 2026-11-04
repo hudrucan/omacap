@@ -7,9 +7,6 @@
 #include "instance-lock.hpp"
 #include "output-config.hpp"
 #include "overlay-chrome.hpp"
-#include "overlay-dismissal.hpp"
-#include "pin.hpp"
-#include "pin-file.hpp"
 #include "capture-handoff.hpp"
 #include "shortcut-guide.hpp"
 #include "startup-timing.hpp"
@@ -141,7 +138,7 @@ int main(int argc, char **argv) {
   const bool windowedEditorProcess = startupParsed &&
       windowedEditorRequested(startupParser, loadEditorWindowMode(defaultConfigPath()));
   // Window::get below gives only the capture surface a layer-shell role.
-  // Dialogs and pinned windows keep Qt's normal xdg-shell integration.
+  // Dialogs keep Qt's normal xdg-shell integration.
   qunsetenv("QT_WAYLAND_SHELL_INTEGRATION");
   // Omarchy exports QT_QPA_PLATFORMTHEME=gtk3 session-wide. Honouring it
   // loads the qgtk3 plugin, which initialises GTK inside this process
@@ -163,8 +160,8 @@ int main(int argc, char **argv) {
   // face.
   QApplication::setFont(chromeDefaultFont());
 
-  // A stitched scroll capture (or any tall pinned image) exceeds Qt's default
-  // 256 MB image-decode allocation limit; lift it so --file/--pin can open it.
+  // Tall scroll captures exceed Qt's default 256 MB decode allocation limit.
+  // Lift it so --file can open them.
   QImageReader::setAllocationLimit(0);
   PosixSignalNotifier signalNotifier(&application);
 
@@ -172,9 +169,6 @@ int main(int argc, char **argv) {
   configureCaptureCommandLine(parser);
   parser.process(application);
   startupTimingMark("command line parsed");
-  // The environment carries --notify to the pins and editors this starts.
-  if (parser.isSet(QStringLiteral("notify")))
-    qputenv("OMACAP_NOTIFY", "1");
   // After parsing: --help and --version exit() inside process(), which skips
   // ~QApplication's wait for the theme loader thread and crashes its teardown.
   initializeChromeTheme();
@@ -215,21 +209,6 @@ int main(int argc, char **argv) {
     captureMode = CaptureEditor::CaptureMode::Region;
 
   const QStringList positional = parser.positionalArguments();
-  if (parser.isSet(QStringLiteral("pin")) || parser.isSet(QStringLiteral("preview"))) {
-    if (!filePath.isEmpty() || clipboardInput || requestedModes > 0 ||
-        !positional.isEmpty() || quickOutputMode != QuickOutputMode::None ||
-        (parser.isSet(QStringLiteral("pin")) && parser.isSet(QStringLiteral("preview")))) {
-      qCritical()
-          << "Pinned mode cannot be combined with capture or edit targets";
-      return 2;
-    }
-    const bool preview = parser.isSet(QStringLiteral("preview"));
-    const QString target = parser.value(preview ? QStringLiteral("preview") : QStringLiteral("pin"));
-    QString pinPath = QUrl(target).toLocalFile();
-    if (pinPath.isEmpty())
-      pinPath = target;
-    return runPinnedCapture(pinPath, preview ? PinLifetime::Timed : PinLifetime::Persistent);
-  }
   if (positional.size() > 1) {
     qCritical() << "Only one capture target may be specified";
     return 2;
@@ -291,7 +270,7 @@ int main(int argc, char **argv) {
   }
   if (!editingImage && quickOutputMode == QuickOutputMode::None &&
       !parser.isSet(QStringLiteral("editor")))
-    quickOutputMode = QuickOutputMode::CopyAndPreview;
+    quickOutputMode = QuickOutputMode::CopyAndNotify;
   startupTimingMark("options resolved");
   if (!loadCaptureFonts())
     return 1;
@@ -326,19 +305,6 @@ int main(int argc, char **argv) {
   CaptureData capture;
   OperationLog restoredLog;
   QString error;
-  std::shared_ptr<PinSnapshotFile> pinDocument;
-  if (parser.isSet(QStringLiteral("pin-document"))) {
-    const QString path = parser.value(QStringLiteral("pin-document"));
-    if (!editingImage || !PinSnapshotFile::isOwnedPath(path)) {
-      qCritical("Invalid pinned document");
-      return 1;
-    }
-    pinDocument = std::make_shared<PinSnapshotFile>(path);
-    if (!pinDocument->isLocked()) {
-      qCritical("Could not retain the pinned document");
-      return 1;
-    }
-  }
   if (editingImage) {
     QImage image;
     QString inputName;
@@ -395,7 +361,7 @@ int main(int argc, char **argv) {
   const bool instantFullscreenOutput =
       !editingImage && captureMode == CaptureEditor::CaptureMode::Fullscreen &&
       quickOutputMode != QuickOutputMode::None &&
-      quickOutputMode != QuickOutputMode::CopyAndPreview;
+      quickOutputMode != QuickOutputMode::CopyAndNotify;
   if (!editingImage &&
       !captureMonitorPixels(capture.monitor, capture,
                             !instantFullscreenOutput, error)) {
@@ -444,7 +410,6 @@ int main(int argc, char **argv) {
   const QSize editingPreview = capture.previewSize;
   CaptureEditor editor(std::move(capture), captureMode, quickOutputMode,
                        restoredLog, nullptr, editorWindowMode && !editingImage);
-  editor.setPinDocument(std::move(pinDocument));
   startupTimingMark("CaptureEditor constructed");
   editor.setScreen(targetScreen);
   if (windowedEditorProcess && editingImage) {
@@ -571,7 +536,6 @@ int main(int argc, char **argv) {
       LayerShellQt::Window::KeyboardInteractivityExclusive);
   layerWindow->setActivateOnShow(true);
   editor.setLayerWindow(layerWindow);
-  OverlayDismissal overlayDismissal(editor);
   startupTimingMark("layer surface configured");
   editor.show();
   editor.setFocus(Qt::ActiveWindowFocusReason);

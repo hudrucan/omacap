@@ -35,7 +35,6 @@ class QPainter;
 class InlineTextEdit;
 class ShortcutGuide;
 class ScrollCapturePanel;
-class PinSnapshotFile;
 namespace LayerShellQt {
 class Window;
 }
@@ -132,10 +131,6 @@ public:
   [[nodiscard]] QString workingSourcePath() const { return snapshotPath_; }
   [[nodiscard]] QString workingLogPath() const;
   bool restoreOperationLog(const QString &path, QString &error);
-  /** Return edits to the originating pin when dismissing this document. */
-  void setPinDocument(std::shared_ptr<PinSnapshotFile> document) {
-    pinDocument_ = std::move(document);
-  }
 
   /**
    * Disables working-snapshot persistence. The hidden editor behind instant
@@ -180,7 +175,7 @@ public:
 
 private:
   enum class Phase { Select, Export, Edit };
-  enum class OutputMode { Copy, Save, Both, CopyAndPreview };
+  enum class OutputMode { Copy, Save, Both, CopyAndNotify };
   enum class HighlighterMode { Snap, Normal };
 public:
   enum class Interaction {
@@ -232,7 +227,6 @@ private:
     QString saved;
     QString error;
     bool snapshotsSuppressed = false;
-    bool savedPreview = false;
   };
   struct EditState {
     QVector<Annotation> annotations;
@@ -555,7 +549,6 @@ private:
   /// Back from the editor to the select phase: the op log is dropped and the
   /// frozen screen is offered again for a new region or window.
   void returnToSelect();
-  void dismissEditor();
   [[nodiscard]] OperationLog currentOperationLog() const;
   void cancelEditInteraction();
   /// Scroll capture takes over the surface with `region` drawn.
@@ -602,7 +595,6 @@ public:
 private:
   void scheduleSnapshot();
   void startSnapshotRender();
-  void pinSnapshot();
   void commitOp(Operation op);
   void commitAnnotate(Annotation annotation);
   void commitPatch(const QVector<int> &indices);
@@ -871,16 +863,6 @@ private:
   bool captureStarted_ = false;
   bool firstPaintReported_ = false;
   CaptureMode pendingMode_ = CaptureMode::Region;
-  // Background render for --pin.
-  /// Path on success, empty + error set on failure. The render and the PNG
-  /// write and process launch happen in the worker; the GUI only handles
-  /// completion or an error.
-  struct PinResult {
-    QString path;
-    QString error;
-  };
-  QFutureWatcher<PinResult> pinWatcher_;
-  bool pinPending_ = false;
   QVector<Annotation> annotations_;
   QVector<Operation> ops_;
   int opIndex_ = 0;
@@ -892,11 +874,10 @@ private:
   bool dragStartStateValid_ = false;
   bool dragChanged_ = false;
   QString snapshotPath_;
-  std::shared_ptr<PinSnapshotFile> pinDocument_;
   QuickOutputMode quickOutputMode_ = QuickOutputMode::None;
   // E/A can temporarily replace automatic output with annotation, then
   // restore the original destination (including explicit --copy/--save).
-  QuickOutputMode captureOutputBeforeEdit_ = QuickOutputMode::CopyAndPreview;
+  QuickOutputMode captureOutputBeforeEdit_ = QuickOutputMode::CopyAndNotify;
   QString status_ = QStringLiteral("Drag to select an area");
   InlineTextEdit *textEditor_ = nullptr;
   QPointF textPoint_;
@@ -936,7 +917,6 @@ private:
   QPointer<QFileDialog> saveAsDialog_;
   QString saveAsDirectory_;
   QFuture<QString> saveAsFuture_;
-  QFuture<QString> dismissFuture_;
   QFutureWatcher<QImage> backdropWatcher_;
   /// The region being read (annotation coordinates). While tesseract runs a
   /// scan band sweeps it; once done the recognized text sits over it for a

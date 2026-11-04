@@ -2,7 +2,6 @@
 #pragma once
 
 #include "cut.hpp"
-#include "pin.hpp"
 
 #include <cstdint>
 #include <functional>
@@ -59,7 +58,7 @@ enum class BackgroundStyle {
   Custom
 };
 enum class CanvasBoundaryMode { Framed, Overflow, Image };
-enum class QuickOutputMode { None, Copy, Save, Both, CopyAndPreview };
+enum class QuickOutputMode { None, Copy, Save, Both, CopyAndNotify };
 
 enum class SpotlightShape { Ellipse, Rectangle, RoundedRectangle };
 enum class RedactionStyle { Solid, Pixelate };
@@ -145,11 +144,8 @@ struct OperationLog {
   /// coordinates live in that space, so a source captured on a scaled
   /// monitor reopens at the same scale. Invalid when unknown.
   QSize previewSize;
-  /// Identity shared by a capture's notification, preview, and editor handoffs.
+  /// Identity shared by a capture's notification and editor handoffs.
   QString captureId = {};
-  /// Durable PNG represented by a rendered preview. A returned pin document
-  /// sets this only after its replacement saved preview has been launched.
-  QString savedPath = {};
 
   bool operator==(const OperationLog &) const = default;
 };
@@ -272,7 +268,7 @@ private:
 [[nodiscard]] bool loadOperationLog(const QString &path, OperationLog &log,
                                     QString &error,
                                     bool *notOperationLog = nullptr);
-/** Reads the operation log beside an opened image (`--file`, `--pin`), if it
+/** Reads the operation log beside an opened image (`--file`), if it
  *  has one. Without one, or when that .json is another program's file, `log`
  *  is left empty and this succeeds. */
 [[nodiscard]] bool loadSidecarOperationLog(const QString &imagePath,
@@ -425,12 +421,7 @@ QImage applyRedactionsScaled(QImage image, const QVector<Annotation> &redactions
 [[nodiscard]] QString moveSnapshotToScreenshots(const QString &sourcePath,
                                                 QString &error,
                                                 const QString &appSlug = {});
-/** Saves an already-rendered PNG without consuming the live pin's source. */
-[[nodiscard]] QString copySnapshotToScreenshots(const QString &sourcePath,
-                                                QString &error);
 [[nodiscard]] QString temporarySnapshotPath();
-[[nodiscard]] QString pinnedSnapshotPath(int index);
-void prunePinnedSnapshots();
 /** Private runtime path for handing a live edit to the other editor
  *  presentation (overlay to window or back). */
 [[nodiscard]] QString editorHandoffPath();
@@ -448,27 +439,10 @@ bool removeEditorHandoff(const QString &path, const QString &token);
 [[nodiscard]] QSize editorWindowSize(const QSize &preview,
                                      const QSize &available,
                                      int legendHeight);
-/** Saves a pinned snapshot plus a sidecar log recording the logical size,
- *  so editing the pin later reopens at the captured scale. */
-[[nodiscard]] bool savePinnedSnapshot(QImage image, const QString &path,
-                                      const QSize &logicalSize, QString &error,
-                                      const QString &captureId = {},
-                                      const QString &savedPath = {});
-/** Saves and launches a private pin, optionally copying the same PNG first.
- *  Call on a worker: encoding, clipboard verification and process launch block.
- *  Returns the owned snapshot path, or removes it on failure. */
-[[nodiscard]] QString launchPinnedCapture(
-    const QImage &image, const QSize &logicalSize, bool copy,
-    PinLifetime lifetime, QString &error,
-    const std::function<bool(const QString &, const QStringList &)> &launcher = {},
-    const QString &captureId = {}, const QString &savedPath = {});
 /** Atomically writes a lossless PNG into the private runtime directory. */
 [[nodiscard]] bool saveTemporarySnapshot(const QImage &image, QString path,
                                          QString &error);
 [[nodiscard]] QString recognizeText(const QImage &image, QString &error);
-/** Whether captures use a clickable notification instead of an immediate
- *  preview. Set by --notify and inherited by its editor processes. */
-[[nodiscard]] bool notifySavedCaptures();
 /** Notification without action buttons. --exec comes last and opens the
  *  fullscreen editor, preserving layers from the capture's handoff. */
 [[nodiscard]] QStringList

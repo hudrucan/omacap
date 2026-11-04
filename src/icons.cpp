@@ -250,17 +250,6 @@ void drawToolbarIcon(QPainter &painter, const QRectF &bounds,
       painter.drawLine(QPointF(16, 18), QPointF(17.5, 19.5));
       painter.drawLine(QPointF(17.5, 19.5), QPointF(20.5, 16.5));
     }
-  } else if (action == QStringLiteral("edit")) {
-    QPainterPath pencil;
-    pencil.moveTo(4, 20);
-    pencil.lineTo(8.5, 18.8);
-    pencil.lineTo(19, 8.3);
-    pencil.quadTo(20.5, 6.8, 19, 5.3);
-    pencil.quadTo(17.5, 3.8, 16, 5.3);
-    pencil.lineTo(5.5, 15.8);
-    pencil.closeSubpath();
-    painter.drawPath(pencil);
-    painter.drawLine(QPointF(14.5, 6.8), QPointF(17.5, 9.8));
   } else if (action == QStringLiteral("path")) {
     QPainterPath link;
     link.moveTo(9, 7);
@@ -273,29 +262,6 @@ void drawToolbarIcon(QPainter &painter, const QRectF &bounds,
     link.lineTo(15, 17);
     painter.drawPath(link);
     painter.drawLine(QPointF(8, 12), QPointF(16, 12));
-  } else if (action == QStringLiteral("folder")) {
-    QPainterPath folder;
-    folder.moveTo(3, 10);
-    folder.lineTo(3, 6);
-    folder.quadTo(3, 4, 5, 4);
-    folder.lineTo(9, 4);
-    folder.lineTo(12, 7);
-    folder.lineTo(19, 7);
-    folder.quadTo(21, 7, 21, 9);
-    folder.moveTo(3, 10);
-    folder.lineTo(22, 10);
-    folder.lineTo(19, 20);
-    folder.lineTo(4, 20);
-    folder.quadTo(3, 20, 3, 18);
-    folder.closeSubpath();
-    painter.drawPath(folder);
-  } else if (action == QStringLiteral("drag-handle")) {
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(color);
-    for (const qreal x : {9.0, 15.0}) {
-      for (const qreal y : {6.0, 12.0, 18.0})
-        painter.drawEllipse(QPointF(x, y), 1.7, 1.7);
-    }
   } else if (action == QStringLiteral("save")) {
     painter.drawLine(QPointF(12, 4), QPointF(12, 15));
     painter.drawLine(QPointF(8, 11), QPointF(12, 15));
@@ -306,31 +272,6 @@ void drawToolbarIcon(QPainter &painter, const QRectF &bounds,
     tray.lineTo(19, 20);
     tray.lineTo(19, 18);
     painter.drawPath(tray);
-  } else if (action == QStringLiteral("pin")) {
-    // Lucide's pin, adapted to QPainterPath (ISC; assets/Lucide-ISC.txt).
-    // https://github.com/lucide-icons/lucide/blob/main/icons/pin.svg
-    painter.drawLine(QPointF(12, 17), QPointF(12, 22));
-    QPainterPath pin;
-    pin.moveTo(9, 10.76);
-    pin.cubicTo(8.9996, 11.5189, 8.5697, 12.2123, 7.89, 12.55);
-    pin.lineTo(6.11, 13.45);
-    pin.cubicTo(5.4303, 13.7877, 5.0004, 14.4811, 5, 15.24);
-    pin.lineTo(5, 16);
-    pin.arcTo(QRectF(5, 15, 2, 2), 180, 90);
-    pin.lineTo(18, 17);
-    pin.arcTo(QRectF(17, 15, 2, 2), 270, 90);
-    pin.lineTo(19, 15.24);
-    pin.cubicTo(18.9996, 14.4811, 18.5697, 13.7877, 17.89, 13.45);
-    pin.lineTo(16.11, 12.55);
-    pin.cubicTo(15.4303, 12.2123, 15.0004, 11.5189, 15, 10.76);
-    pin.lineTo(15, 7);
-    pin.arcTo(QRectF(15, 6, 2, 2), 180, -90);
-    pin.arcTo(QRectF(14, 2, 4, 4), 270, 180);
-    pin.lineTo(8, 2);
-    pin.arcTo(QRectF(6, 2, 4, 4), 90, 180);
-    pin.arcTo(QRectF(7, 6, 2, 2), 90, -90);
-    pin.closeSubpath();
-    painter.drawPath(pin);
   } else if (action == QStringLiteral("close")) {
     painter.drawLine(QPointF(6, 6), QPointF(18, 18));
     painter.drawLine(QPointF(18, 6), QPointF(6, 18));

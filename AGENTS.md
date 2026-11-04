@@ -3,21 +3,17 @@
 Omacap is a super fast, native Wayland screenshot and annotation overlay,
 built for [Omarchy](https://omarchy.org) on Hyprland. It captures region,
 window, or full monitor (plus a scrolling-region mode that stitches a taller
-page into one image), then copies it and opens a floating compositor preview.
-The preview fades after 7 seconds of idle time unless kept with its pin button,
-Ctrl+P, or by dragging it, including within the stack. Hovering and in-progress
-actions pause its countdown.
-It opens an annotation editor on demand, with vector layers
+page into one image), then copies it and shows a notification. Clicking the
+notification opens the fullscreen annotation editor with vector layers
 (arrows, lines, freehand, highlighter, rectangles, ellipses, numbered
-markers, text, OCR). Finished captures go to clipboard,
-`~/Pictures/Screenshots`, or a floating capture pinned across workspaces.
+markers, text, OCR). Files are saved only by explicit output actions or autosave.
 
 Omacap is a UI-focused fork of https://github.com/omacom/omasnap.
 Keep its identity, config, runtime paths, locks, and desktop assets distinct from upstream.
 The PNG metadata key `Omasnap logical size` intentionally identifies the shared file format.
 The compact toolbar exposes secondary tools via its More menu; all existing tool shortcuts remain.
 Help is opt-in and may also be opened from More. Preserve the spacing between actions.
-There is no screenshot history; only notification and preview actions retain temporary runtime documents.
+There is no screenshot history; only notifications retain temporary runtime documents.
 
 ## Project principles
 
@@ -37,9 +33,8 @@ change that touches the principle, not just this summary.
 - **Every operation is undoable.** The operation log is the source of
   truth; the visible image is rebuilt from it. Rendering for editing is a
   pure, repeatable function of that log — nothing is baked into the working
-  image as you draw. Fresh captures copy and show a timed preview by default;
-  during editing, output is applied only on **Copy**, **Save**, or both
-  (or an explicit pin or a return to its preview),
+  image as you draw. Fresh captures copy and show a notification by default;
+  during editing, output is applied only on **Copy**, **Save**, **Save As**, or both,
   which is the one moment a flattened image is produced. Redaction is the
   deliberate, documented exception: it must actually destroy pixels at
   render time so nothing recoverable leaks into an export, while remaining
@@ -68,7 +63,7 @@ change that touches the principle, not just this summary.
   (`hyprctl`, `wl-copy`/`wl-paste`, `tesseract`, `omarchy-notification-send`)
   instead of linking their equivalents in-process. Know this list before
   proposing an addition to it. See [docs/dependencies.md](docs/dependencies.md).
-- **Single small binary.** Everything (capture, editor, pin mode, scroll
+- **Single small binary.** Everything (capture, editor, scroll
   capture) runs from the one `omacap` executable. Every new dependency or
   vendored asset is weight every install carries.
 - **No backwards compatibility.** Break keybindings, CLI flags, file
@@ -101,11 +96,9 @@ change that touches the principle, not just this summary.
 | `src/stitch-replay.cpp` | Standalone tool: replay a dumped frame directory through the stitcher with no compositor |
 | `src/surface-capture.cpp` | In-process output/window capture via `ext-image-copy-capture` |
 | `src/cut.cpp/.hpp` | Cut-band tool: remove a strip and collapse the gap |
-| `src/capture-handoff.cpp/.hpp` | Temporary runtime documents for notification and preview actions |
+| `src/capture-handoff.cpp/.hpp` | Temporary runtime documents for notifications |
 | `src/output-config.cpp/.hpp`, `src/palette-config.cpp/.hpp` | The optional `omacap.conf` INI: output destination/filename, color presets |
-| `src/pin.cpp/.hpp`, `src/pin-file.cpp/.hpp`, `src/pin-layout.cpp/.hpp` | Floating pinned captures, their files, and compositor placement |
-| `src/pin-expiry.cpp/.hpp` | Preview countdown, interaction pauses, and fade |
-| `src/icons.cpp/.hpp` | Vector icon renderer for toolbar and pin controls |
+| `src/icons.cpp/.hpp` | Vector icon renderer for the toolbar |
 | `src/cli-path.cpp/.hpp` | Command-line image target resolution |
 | `src/eyedropper.cpp/.hpp` | Display-to-source color sampling |
 | `tests/*-smoke.cpp/.hpp` | Headless Qt Test coverage: offscreen region clicks, async capture, single-instance handover, stitching fixtures |

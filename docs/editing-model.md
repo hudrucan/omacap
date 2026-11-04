@@ -18,7 +18,7 @@ the JSON-serialized log and reconstruct everything on reopen (see
 `capture-handoff.hpp`), and why new annotation kinds or edit actions must be
 expressed as a new `Operation::Type` (or a field on `Annotation`) rather
 than a side channel of editor state — anything that bypasses the log breaks
-undo, crash recovery, and notification/preview editing simultaneously.
+undo, crash recovery, and notification editing simultaneously.
 
 ## Rendering is a pure function of the log, until you export
 
@@ -32,92 +32,18 @@ flatten or repaint the full capture. **Nothing is baked into the working
 image as you draw.** Add a rectangle, change your mind, delete it — the
 source pixels underneath were never touched.
 
-Completing a fresh capture copies it without exporting a file. `--notify` shows
-one click-to-edit notification; otherwise it shows a timed preview. Autosave is off by default. The
-preview fades after 7 seconds of idle time; its pin button, Ctrl+P, or moving the
-preview keeps it, including a drag that only reorders the stack.
+Completing a fresh capture copies it without exporting a file and shows one
+click-to-edit notification. Autosave is off by default.
 `--editor overlay` or `--editor window` opens annotation before output; `E` or
 `A` in the capture picker toggles the same behavior for that capture, including
-scrolling captures. A pin's Edit button also opens the editor on demand.
-During editing, output happens on **Copy**, **Save**, **Save As**, or both Copy
-and Save together (`CaptureEditor::finish()` / `saveAsToPath()`), plus pinning a snapshot or
-returning edits to an existing pin. Each render runs off the UI thread (see
-[threading.md](threading.md)), and writes the result. Until one of those
-happens, everything remains a log entry you can undo. Successful Save, Save As,
-and Copy + Save actions close the editor and return a fresh timed preview to the
-stack. Its private metadata points to the saved PNG for Reveal and Copy path;
-expiry removes only the runtime copy. An originating preview or pin closes once
-its replacement is ready. Cancelling the chooser or failing to save keeps editing open.
+scrolling captures. Copy closes the editor silently. Save, Save As, and Copy +
+Save write the file and show a notification. Cancelling the chooser or failing
+to save keeps editing open. Rendering and output run off the UI thread (see
+[threading.md](threading.md)).
 
-Notifications and pinned previews use a temporary source, operation log, and
-thumbnail under the private runtime directory. There is no screenshot history,
-and closing a plain editor or using Copy does not retain another capture.
-Edit waits for any pending handoff write so native pixels and layers survive.
+Notifications use a temporary source, operation log, and thumbnail under the
+private runtime directory. There is no screenshot history, and closing an editor
+or using Copy does not retain another capture. Edit waits for any pending handoff
+write so native pixels and layers survive.
 Expired action documents are pruned after 15 minutes when new data is published;
 the runtime directory is also cleared with the login session.
-
-Opening a pin for annotation leaves its compositor window in place. A private
-copy retains the pristine source and operation log; `Esc` commits any text draft,
-dismisses the annotator, and updates the pin's rendered preview. Reopening reads
-the source and log, so undo still works. Copying, dragging, or revealing the pin
-shares only the rendered preview. The pin handoff never overwrites the original user file,
-and the last pin/editor owner removes the private source, log, and preview together.
-
-Scrolling captures retain the monitor's scale when they become editable
-documents. Their native pixels stay intact; only the logical presentation size
-changes. Loaded documents also retain their exact pixel dimensions on export,
-even when the logical size was rounded for a scaled display.
-Flattened pins and previews record the logical size of the entire rendered
-image, including its backdrop and expanded canvas, so reopening them preserves
-their proportions. The editable source's log still uses its original coordinates.
-Flattened PNG exports carry their complete logical dimensions in an
-`Omasnap logical size` text field, including crops, mats, and canvas growth.
-File and clipboard imports read it without needing the private sidecar;
-an editable document's operation log takes precedence. A same-name `.json`
-beside an opened image that is not shaped like an omacap operation log (an
-object with a numeric `version` and an `ops` array) is another program's file:
-it is ignored, and the image opens without layers. One that does not parse as
-JSON, or is a log of another version, still fails, since it may be omacap's
-own, cut short or newer. Untagged images retain
-their pixel dimensions: print DPI does not establish screenshot display scale.
-A tag or log whose logical size would mean a scale outside 1 to 4 on either
-axis is ignored, so a hand-made value cannot blow up the frame or the view.
-
-## The two exceptions, and why they're still safe
-
-Two operations *do* need to touch real pixels before export, and both are
-still fully undoable because of how they're kept in the log:
-
-- **Cut** (`Operation::Type::Cut`) removes a band of the image and shifts
-  everything after it, or **inserts** a transparent band (`cut.insert`) and
-  shifts everything after the seam out. The working image (`capture_.source`)
-  after a cut is `composeCuts(pristineSource_, cuts_)` — recomputed from the
-  untouched original plus the list of cut ops every time the list changes
-  (`CaptureEditor::refreshComposedCapture()`). Undo a cut and the composed
-  image is rebuilt without it; `pristineSource_` was never modified.
-- **Redaction** exists to permanently destroy sensitive content, so it is
-  the one place where "non-destructive until export" would be a bug, not a
-  feature: `renderCapture` applies redactions to the cropped pixels
-  **before** painting ordinary vector annotations, and does so on every
-  render, not just the final export. A redaction annotation is still a
-  normal log entry — delete it before you export and the pixels underneath
-  reappear from the pristine source, exactly like any other undo. But at
-  the moment you do export, the destroyed pixels must actually be gone from
-  the output. The code comment in `src/capture.cpp` is the rule: redactions
-  "must never be approximated by a translucent overlay ... because that
-  could leave recoverable source data in exports." Never soften a
-  redaction's pixel destruction into a paint-time visual effect to make it
-  cheaper or prettier — that reintroduces the leak this feature exists to
-  prevent.
-
-## What this means for new features
-
-- New annotation kinds: add a field/kind, extend `renderCapture` and
-  `replayLog`; don't add editor-only state that isn't in the log.
-- New destructive operations (if ever needed): must recompute from
-  `pristineSource_` the way cuts do, unless the entire point is irreversible
-  pixel destruction like redaction — and if so, say so explicitly in a
-  comment the way redaction's is written, because the next person touching
-  that code needs the same warning.
-- Anything that renders for output must go through `renderCapture`, not a
-  parallel drawing path, or the two will drift.

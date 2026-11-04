@@ -13,7 +13,7 @@ From `CMakeLists.txt`, this is the entire list:
 | **Qt6** (Concurrent, Core, Gui, Test, Widgets) 6.8+ | Everything: windowing, painting, the editor UI, the worker-pool threading model ([threading.md](threading.md)), the test harness |
 | **LayerShellQt** | Layer-shell surfaces (the capture overlay and editor) |
 | **wayland-client** (pkg-config) | Raw protocol client code (`ext-image-copy-capture`, `zwlr_virtual_pointer_v1`) that LayerShellQt/QtWayland don't expose |
-| **libdeflate** (pkg-config) | Fast lossless PNG compression and CRCs for 8-bit screenshots; avoids seconds of Qt/zlib encoding before a 6K preview can appear |
+| **libdeflate** (pkg-config) | Fast lossless PNG compression and CRCs for 8-bit screenshots; avoids seconds of Qt/zlib encoding before a 6K screenshot can reach the clipboard |
 | **wayland-scanner** + protocol XML | Generates the C bindings for the above at build time; not a runtime dependency |
 
 That's it. No JSON library (Qt's `QJsonDocument` handles `hyprctl -j`
@@ -27,7 +27,7 @@ TOML color files with Qt; it adds no parser library.
 On a captured 6K desktop, Qt's default PNG encoding took about 3 seconds;
 even its fastest compressed setting took about 700 ms. Libdeflate brought
 compression to about 150 ms with identical decoded pixels and similar file
-size. It earns its dependency by removing that capture-to-preview delay.
+size. It earns its dependency by removing that capture-to-clipboard delay.
 The fast encoder also writes Omacap's small logical-size PNG text field, so
 standalone captures reopen at their original display size without resampling.
 Qt still reads every image and writes images with profiles/other text/offset metadata,
@@ -47,15 +47,12 @@ no user-visible benefit.
 
 | Process | Used for | Required? |
 |---|---|---|
-| `hyprctl` | Monitor/window discovery (`-j` JSON), floating pin placement, natural-scroll policy query | Yes — see [platform-scope.md](platform-scope.md) |
+| `hyprctl` | Monitor/window discovery (`-j` JSON), Save As window placement, natural-scroll policy query | Yes — see [platform-scope.md](platform-scope.md) |
 | `wl-copy` / `wl-paste` | Writing PNG/text to the Wayland clipboard, and verifying the write | Yes |
-| `xdg-open` | Opening a screenshot's containing folder in the default file browser | For Show in folder |
-| `xdg-mime` / `busctl` | Resolve the default folder application and ask it to select the screenshot with `FileManager1.ShowItems` | Optional — falls back to `xdg-open` |
 | `tesseract` | OCR text recognition | Only if OCR is used; missing tesseract fails just that action |
 | `omarchy-notification-send` | Capture-finished notifications | No — falls back silently if absent (checked with `command -v` semantics via failed `QProcess::startDetached`) |
 
-These run through the small `QProcess` helpers in `src/capture.cpp` and
-`src/pin.cpp`, from a background worker (see [threading.md](threading.md)).
+These run through small `QProcess` helpers on background workers (see [threading.md](threading.md)).
 Calls that wait for a result have a timeout; long-lived applications launch
 detached. None run inline on the UI thread.
 
@@ -125,11 +122,6 @@ Ask, in order:
    existed.
 
 ## Binary size
-
-The pin icon in `src/icons.cpp` uses [Lucide's pin geometry](https://github.com/lucide-icons/lucide/blob/main/icons/pin.svg),
-adapted to the existing `QPainterPath` renderer. Its ISC notice is in
-`assets/Lucide-ISC.txt` and installed with the font licenses. No icon library,
-SVG renderer, or theme lookup is needed.
 
 Single, statically-linked-where-practical binary, installed to
 `~/.local/bin/omacap` (see the repository's `install-omarchy`). Every

@@ -1,9 +1,8 @@
-/** @fileoverview Save As atomically exports PNG and returns a saved preview. */
+/** @fileoverview Save As atomically exports PNG and announces the saved file. */
 #include "save-as-smoke.hpp"
 #include "capture.hpp"
 #include "editor.hpp"
 #include "capture-handoff-test.hpp"
-#include "pin-file.hpp"
 
 #include <QApplication>
 #include <QCloseEvent>
@@ -21,6 +20,7 @@
 #include <QStringList>
 #include <QWidget>
 #include <QWindow>
+#include <QUrl>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileDialog>
@@ -92,17 +92,12 @@ bool runSaveAsSmoke(QString &error) {
   }
   error.clear();
 
-  QStringList previews;
-  const auto cleanupPreviews = qScopeGuard([&] {
-    for (const QString &path : previews) {
-      const PinSnapshotFile owned(path);
-    }
-  });
-  const auto preparePreview = [&](CaptureEditor &editor) {
-    editor.setProcessLauncherForTest([&](const QString &, const QStringList &args) {
-      if (args.size() != 2 || args.first() != QStringLiteral("--preview"))
+  QStringList notification;
+  const auto prepareNotification = [&](CaptureEditor &editor) {
+    editor.setProcessLauncherForTest([&](const QString &program, const QStringList &args) {
+      if (program != QStringLiteral("omarchy-notification-send"))
         return false;
-      previews.push_back(args.last());
+      notification = args;
       return true;
     });
   };
@@ -115,7 +110,7 @@ bool runSaveAsSmoke(QString &error) {
   capture.previewSize = capture.monitor.geometry.size();
   for (const bool windowed : {false, true}) {
     CaptureEditor editor(capture, CaptureEditor::CaptureMode::File);
-    preparePreview(editor);
+    prepareNotification(editor);
     editor.setWindowedPresentation(windowed);
     editor.resize(800, 600);
     editor.show();
@@ -234,19 +229,13 @@ bool runSaveAsSmoke(QString &error) {
       error = QStringLiteral("Save As did not retain its editable capture");
       return false;
     }
-    OperationLog previewLog;
-    if (previews.isEmpty() ||
-        !loadOperationLog(operationLogPath(previews.last()), previewLog, error) ||
-        previewLog.savedPath != output || previewLog.captureId != savedLog.captureId ||
-        QImage(previews.last()) != QImage(output)) {
-      error = QStringLiteral("Saved preview lost its file, pixels, or capture identity");
+    if (notification.contains(QStringLiteral("--action")) ||
+        !notification.contains(savedLog.captureId) ||
+        QUrl(notification.last()).toLocalFile() != output) {
+      error = QStringLiteral("Save As notification lost its saved file or capture identity");
       return false;
     }
     editor.show();
-    const auto document = copyPinDocument(previews.last(), error);
-    if (!document)
-      return false;
-    editor.setPinDocument(document);
     editor.selectedAnnotation_ = 0;
     editor.selectedAnnotations_ = {0};
     editor.nudgeSelectedAnnotation(QPointF(3, 0));
@@ -261,10 +250,8 @@ bool runSaveAsSmoke(QString &error) {
       return false;
     }
     const int savedIndex = editor.operationIndex();
-    OperationLog completedDocument;
-    if (!loadOperationLog(operationLogPath(document->path()), completedDocument, error) ||
-        completedDocument.savedPath != nudged || editor.isVisible()) {
-      error = QStringLiteral("Save As did not retire the originating preview and close");
+    if (editor.isVisible()) {
+      error = QStringLiteral("Save As did not close the editor");
       return false;
     }
     const auto updatedRecent = findCaptureHandoff(editor.captureId_, &error);
@@ -276,7 +263,6 @@ bool runSaveAsSmoke(QString &error) {
       return false;
     }
     editor.show();
-    editor.setPinDocument({});
     editor.saveAsToPath(directory.filePath(QStringLiteral("missing/file.png")));
     if (!waitUntil([&] { return !editor.busy_; }) || !editor.isVisible() ||
         editor.operationIndex() != savedIndex ||
@@ -284,22 +270,10 @@ bool runSaveAsSmoke(QString &error) {
       error = QStringLiteral("Failed Save As changed or closed the editor");
       return false;
     }
-    const QString failedPreview = directory.filePath(QStringLiteral("preview-failed.png"));
-    editor.setProcessLauncherForTest([](const QString &, const QStringList &) { return false; });
-    editor.saveAsToPath(failedPreview);
-    if (!waitUntil([&] { return !editor.busy_; }) || !editor.isVisible() ||
-        QImage(failedPreview).isNull() ||
-        !editor.statusForTest().contains(QStringLiteral("could not show its preview"))) {
-      error = QStringLiteral("A failed preview launch lost its saved PNG or closed the editor");
-      return false;
-    }
-    editor.close();
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
   }
-  // Under --notify, Save As announces the chosen file instead of previewing it.
+  // Save As announces the chosen file.
   {
-    qputenv("OMACAP_NOTIFY", "1");
-    const auto restoreNotify = qScopeGuard([] { qunsetenv("OMACAP_NOTIFY"); });
     // Keep the wording English whatever this desktop's language is.
     QFile i18n(directory.filePath(QStringLiteral("omarchy-i18n")));
     if (!i18n.open(QIODevice::WriteOnly) ||
@@ -312,22 +286,22 @@ bool runSaveAsSmoke(QString &error) {
     qputenv("PATH", directory.path().toUtf8() + ':' + oldPath);
     CaptureEditor editor(capture, CaptureEditor::CaptureMode::File);
     QStringList toast;
-    bool previewed = false;
+    bool unexpectedLaunch = false;
     editor.setProcessLauncherForTest([&](const QString &program, const QStringList &args) {
       if (program == QStringLiteral("omarchy-notification-send"))
         toast = args;
       else
-        previewed = true;
+        unexpectedLaunch = true;
       return true;
     });
     editor.show();
     const QString output = directory.filePath(QStringLiteral("notified.png"));
     editor.saveAsToPath(output);
-    if (!waitUntil([&] { return !editor.busy_; }) || editor.isVisible() || previewed ||
+    if (!waitUntil([&] { return !editor.busy_; }) || editor.isVisible() || unexpectedLaunch ||
         toast.isEmpty() || QUrl(toast.last()).toLocalFile() != output ||
         toast.contains(QStringLiteral("--action")) ||
         !toast.contains(QStringLiteral("--capture-id")) || QImage(output).isNull()) {
-      error = QStringLiteral("Save As under --notify did not announce its file: %1")
+      error = QStringLiteral("Save As did not announce its file: %1")
                   .arg(toast.join(QStringLiteral(" | ")));
       return false;
     }
@@ -353,7 +327,7 @@ bool runSaveAsSmoke(QString &error) {
   // arrives. Closing must invalidate that completion, even without destruction.
   for (const bool windowed : {false, true}) {
     CaptureEditor editor(capture, CaptureEditor::CaptureMode::File);
-    preparePreview(editor);
+    prepareNotification(editor);
     editor.setWindowedPresentation(windowed);
     editor.show();
     editor.saveAs();
@@ -427,7 +401,7 @@ bool runSaveAsSmoke(QString &error) {
     // application teardown, even with its GUI completion still pending.
     editor = std::make_unique<CaptureEditor>(capture, CaptureEditor::CaptureMode::File);
     const QString output = directory.filePath(QStringLiteral("destroyed.png"));
-    preparePreview(*editor);
+    prepareNotification(*editor);
     editor->saveAsToPath(output);
     editor.reset();
     if (QImage(output).isNull()) {

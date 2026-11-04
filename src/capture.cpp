@@ -2,8 +2,6 @@
 #include <QTextLayout>
 #include <QTextOption>
 #include "capture.hpp"
-#include "pin-file.hpp"
-#include "pin-layout.hpp"
 #include "png.hpp"
 #include "capture-handoff.hpp"
 #include "stroke-smoothing.hpp"
@@ -1750,7 +1748,7 @@ bool copyImageToClipboard(const QImage &image, QString &error) {
 bool quickOutput(QImage image, QuickOutputMode mode, QString &error,
                  const QSize &logicalSize) {
   if (image.isNull() || mode == QuickOutputMode::None ||
-      mode == QuickOutputMode::CopyAndPreview) {
+      mode == QuickOutputMode::CopyAndNotify) {
     error = QStringLiteral("Could not prepare screenshot snapshot");
     return false;
   }
@@ -1759,14 +1757,12 @@ bool quickOutput(QImage image, QuickOutputMode mode, QString &error,
   log.captureId = QUuid::createUuid().toString(QUuid::Id128);
   setPngLogicalSize(image, log.previewSize);
   QString handoffError;
-  if (notifySavedCaptures() &&
-      !recordCaptureHandoff(image, log, image, handoffError))
+  if (!recordCaptureHandoff(image, log, image, handoffError))
     qWarning().noquote() << handoffError;
   if (mode == QuickOutputMode::Copy) {
     if (!copyImageToClipboard(image, error))
       return false;
-    const auto handoff = notifySavedCaptures() ? findCaptureHandoff(log.captureId)
-                                            : std::nullopt;
+    const auto handoff = findCaptureHandoff(log.captureId);
     sendCaptureNotification(QStringLiteral("Screenshot copied to clipboard"),
                             handoff ? handoff->thumbPath : QString(), log.captureId);
     return true;
@@ -1861,16 +1857,6 @@ QString moveSnapshotToScreenshots(const QString &sourcePath, QString &error,
   return {};
 }
 
-QString copySnapshotToScreenshots(const QString &sourcePath, QString &error) {
-  const QString targetPath = screenshotTargetPath(error, {});
-  if (targetPath.isEmpty())
-    return {};
-  if (QFile::copy(sourcePath, targetPath))
-    return targetPath;
-  error = QStringLiteral("Could not save screenshot to: %1").arg(targetPath);
-  return {};
-}
-
 QString temporarySnapshotPath() {
   // Stable per process so repeated saves overwrite one working snapshot.
   static const quint32 nonce = QRandomGenerator::global()->generate();
@@ -1891,30 +1877,6 @@ QString operationLogPath(const QString &imagePath) {
   return info.dir().filePath(info.completeBaseName() + QStringLiteral(".json"));
 }
 
-QString pinnedSnapshotPath(int index) {
-  // A fresh nonce prevents collisions when the editor PID is recycled.
-  return runtimePath(QStringLiteral("pin-%1-%2-%3.png")
-                         .arg(QCoreApplication::applicationPid())
-                         .arg(index)
-                         .arg(QRandomGenerator::global()->generate64(), 16, 16,
-                              QChar('0')));
-}
-
-void prunePinnedSnapshots() {
-  const QString runtime = secureRuntimeDirectory();
-  if (runtime.isEmpty())
-    return;
-  const QDateTime cutoff = QDateTime::currentDateTime().addDays(-1);
-  const QFileInfoList stale =
-      QDir(runtime).entryInfoList({QStringLiteral("pin-*.png")}, QDir::Files);
-  for (const QFileInfo &entry : stale) {
-    if (entry.lastModified() >= cutoff || !PinSnapshotFile::isOwnedPath(entry.absoluteFilePath()))
-      continue;
-    // The source lock protects the entire document, including its sidecar
-    // and edited preview. Never prune those independently of an active pin.
-    const PinSnapshotFile snapshot(entry.absoluteFilePath());
-  }
-}
 
 QString editorHandoffPath() {
   return runtimePath(QStringLiteral("edit-%1-%2.png")
@@ -1990,80 +1952,6 @@ QSize editorWindowSize(const QSize &preview, const QSize &available,
   return {std::max(size.width(), 640), std::max(size.height(), 420)};
 }
 
-bool savePinnedSnapshot(QImage image, const QString &path,
-                        const QSize &logicalSize, QString &error,
-                        const QString &captureId, const QString &savedPath) {
-  if (savedPath.isEmpty()) {
-    setPngLogicalSize(image, logicalSize);
-    if (!saveTemporarySnapshot(image, path, error))
-      return false;
-  } else {
-    // Reuse the PNG that was just saved instead of encoding it a second time.
-    // An owned runtime copy lets expiry/drag-out leave the user's file intact.
-    if (!QFile::copy(savedPath, path)) {
-      error = QStringLiteral("Screenshot saved, but could not prepare its preview");
-      return false;
-    }
-  }
-  // The snapshot holds device pixels; the sidecar records the logical size
-  // the capture was presented at, the same way an Edit document's log does, so
-  // a later edit of the pin reconstructs the scale instead of opening the
-  // image blown up.
-  OperationLog sidecar;
-  sidecar.previewSize = logicalSize;
-  sidecar.captureId = captureId;
-  if (!savedPath.isEmpty())
-    sidecar.savedPath = QFileInfo(savedPath).absoluteFilePath();
-  if (!logicalSize.isEmpty() &&
-      !saveOperationLog(operationLogPath(path), sidecar, error)) {
-    QFile::remove(path);
-    return false;
-  }
-  return true;
-}
-
-QString launchPinnedCapture(
-    const QImage &image, const QSize &logicalSize, bool copy,
-    PinLifetime lifetime, QString &error,
-    const std::function<bool(const QString &, const QStringList &)> &launcher,
-    const QString &captureId, const QString &savedPath) {
-  StartupTimingScope timing("prepare and launch pin");
-  prunePinnedSnapshots();
-  const QString path = pinnedSnapshotPath(1);
-  if (path.isEmpty()) {
-    error = QStringLiteral("Could not create private runtime directory");
-    return {};
-  }
-  if (!savePinnedSnapshot(image, path, logicalSize, error, captureId, savedPath))
-    return {};
-  const auto cleanup = [&] {
-    QFile::remove(path);
-    QFile::remove(operationLogPath(path));
-    QFile::remove(PinSnapshotFile::thumbnailPath(path));
-  };
-  // The child only needs card-sized pixels to map its first frame. Its
-  // clipboard, file sharing, and editor still use the full-resolution PNG.
-  if (!saveTemporarySnapshot(pinDisplayImage(image),
-                             PinSnapshotFile::thumbnailPath(path), error)) {
-    cleanup();
-    return {};
-  }
-  if (copy && !copyPngFileToClipboard(path, error)) {
-    cleanup();
-    return {};
-  }
-  const QString program = QCoreApplication::applicationFilePath();
-  const QStringList arguments{lifetime == PinLifetime::Timed
-                                  ? QStringLiteral("--preview") : QStringLiteral("--pin"), path};
-  if (!(launcher ? launcher(program, arguments)
-                 : QProcess::startDetached(program, arguments))) {
-    cleanup();
-    error = copy ? QStringLiteral("Screenshot copied, but could not start pinned capture")
-                 : QStringLiteral("Could not start pinned capture");
-    return {};
-  }
-  return path;
-}
 
 bool saveTemporarySnapshot(const QImage &image, QString path, QString &error) {
   StartupTimingScope timing("encode and save PNG");
@@ -2590,8 +2478,6 @@ bool saveOperationLog(const QString &path, const OperationLog &log,
   root.insert(QStringLiteral("nextMarker"), log.nextMarker);
   if (!log.captureId.isEmpty())
     root.insert(QStringLiteral("captureId"), log.captureId);
-  if (!log.savedPath.isEmpty())
-    root.insert(QStringLiteral("savedPath"), log.savedPath);
   if (log.previewSize.isValid()) {
     root.insert(QStringLiteral("previewWidth"), log.previewSize.width());
     root.insert(QStringLiteral("previewHeight"), log.previewSize.height());
@@ -2652,7 +2538,6 @@ bool loadOperationLog(const QString &path, OperationLog &log, QString &error,
   loaded.nextId = root.value(QStringLiteral("nextId")).toString().toULongLong();
   loaded.nextMarker = root.value(QStringLiteral("nextMarker")).toInt(1);
   loaded.captureId = root.value(QStringLiteral("captureId")).toString();
-  loaded.savedPath = root.value(QStringLiteral("savedPath")).toString();
   loaded.previewSize =
       QSize(root.value(QStringLiteral("previewWidth")).toInt(),
             root.value(QStringLiteral("previewHeight")).toInt());
@@ -2744,10 +2629,6 @@ QString recognizeText(const QImage &image, QString &error) {
   return text;
 }
 
-bool notifySavedCaptures() {
-  return qEnvironmentVariableIntValue("OMACAP_NOTIFY") == 1;
-}
-
 namespace {
 
 // The --notify toast's wording lives in Omarchy's catalog under these keys.
@@ -2821,7 +2702,7 @@ void sendCaptureNotification(
     const QString &message, const QString &imagePath, const QString &captureId,
     const std::function<bool(const QString &, const QStringList &)> &launcher) {
   const QString program = QStringLiteral("omarchy-notification-send");
-  const bool toast = notifySavedCaptures() && !imagePath.isEmpty();
+  const bool toast = !imagePath.isEmpty();
   const QStringList arguments = captureNotificationArguments(
       message, imagePath, captureId, toast,
       toast ? omarchyText() : std::function<QString(const QString &)>{});
