@@ -1,66 +1,178 @@
-# Omacap
+<p align="center">
+  <img src="assets/banner.svg" alt="Omacap — capture a moment, copy it anywhere." width="100%" />
+</p>
 
-A compact screenshot app for Omarchy and Hyprland, forked from
-[Omasnap](https://github.com/omacom/omasnap) 1.24.0 (`6208946`).
+<p align="center">
+  <a href="https://omarchy.org"><img src="https://img.shields.io/badge/Omarchy-native-86b7ff?style=flat-square&amp;labelColor=1b2330" alt="Made for Omarchy" /></a>
+  <a href="https://hypr.land"><img src="https://img.shields.io/badge/Hyprland-Wayland-86b7ff?style=flat-square&amp;labelColor=1b2330" alt="Wayland and Hyprland" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-e8eddf?style=flat-square&amp;labelColor=1b2330" alt="MIT license" /></a>
+</p>
 
-![Omacap editor](assets/preview-editor.png)
+<p align="center">
+  A compact screenshot and annotation app for Omarchy.<br />
+  Capture, mark up, copy — save only when you choose.
+</p>
 
-Drag an area, click a window, or click empty space for the focused monitor.
-Captures copy automatically; files are saved only when you choose Save. A small preview lets you edit on demand.
+<p align="center">
+  <a href="#install">Install</a> ·
+  <a href="#use">Use</a> ·
+  <a href="#configure">Configure</a> ·
+  <a href="#development">Development</a>
+</p>
 
-The editor uses a compact dock with select/crop, arrow, draw, shape, text,
-redact, color, undo, and **Copy**. Extra tools and output actions live under
-**…**. Buttons have 6 px gaps, wider group spacing, and padding around the dock.
-Keyboard help opens with **?** or **… → Shortcuts**.
-Capture notifications offer **Save** and **Edit**. Edit keeps Save under **…**.
+## See it in action
 
-Omacap has its own binary, icon, desktop entry, config, runtime locks, and
-temporary action data. It keeps no screenshot history and runs alongside
-Omasnap and the unrelated window-snapping plugin. Screen recording stays with Omarchy.
+![Omacap's compact annotation editor](assets/preview-editor.png)
 
-## Build and run
+- **Copy first.** Captures go straight to the system clipboard. Save a file only when you need one.
+- **Edit on demand.** A compact toolbar for arrows, drawing, shapes, text, and redaction. Extra tools live under **…**.
+- **Save deliberately.** Use **Save** on the notification or **… → Save** in the editor. Copy from the editor stays silent.
+- **Keep native pixels.** Region, window, fullscreen, and scrolling captures preserve detail on scaled displays.
 
-Requires Qt 6.8+, LayerShellQt, Wayland protocols, libdeflate, CMake, Ninja,
-and a C++23 compiler. Runtime tools: `hyprctl`, `wl-copy`, `wl-paste`;
-`tesseract` is needed only for OCR. See [dependencies](docs/dependencies.md).
+Native **Wayland + Hyprland**. Follows your Omarchy theme, including live changes.
+
+## Install
+
+```sh
+git clone https://github.com/hudrucan/omacap.git
+cd omacap
+./install-omarchy
+```
+
+The installer installs missing dependencies through Omarchy, builds in
+`~/.cache/omacap/build`, and installs the app under `~/.local`.
+Use `OMACAP_PREFIX` to choose another install prefix.
+
+Omacap is a native app. Add its capture binding in `~/.config/hypr/bindings.lua`:
+
+```lua
+o.rebind("PRINT", "Screenshot", "omacap --notify")
+```
+
+This replaces the current Print binding. Reload and check with
+`hyprctl reload` and `hyprctl configerrors`. Launch **Omacap** from the app launcher
+or run `omacap --notify` to use it without a binding.
+
+## Use
+
+**Drag** an area, **click** a window, or click empty desktop space for the focused monitor.
+With `--notify`, the copied image has **Edit** and **Save** actions.
+Without it, a floating preview offers editing, copying, pinning, and file drag;
+it fades after 7 seconds of idle time. Hovering pauses the countdown.
+
+The editor's main action is **Copy**. Save lives under **… → Save**.
+Press **?** or choose **… → Shortcuts** for keyboard help.
+
+| Key | Action |
+| :--- | :--- |
+| Enter / Ctrl+C | Copy only |
+| Ctrl+S / Ctrl+Shift+S | Save / Save As |
+| V / A / F | Select or crop / arrow / draw |
+| R / E | Rectangle / ellipse |
+| T / D / O | Text / redact / OCR |
+| Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
+| Ctrl+P | Pin on screen |
+| W | Switch editor between overlay and window |
+| ? | Toggle keyboard help |
+| Esc | Dismiss a menu or close |
+
+<details>
+<summary><strong>More tools and output actions</strong></summary>
+
+![Omacap's More menu](assets/preview-more.png)
+
+Line, highlighter, numbered markers, spotlight, cut band, OCR, backdrops, redo,
+pinning, Copy + Save, and Save are available under **…**.
+
+</details>
+
+<details>
+<summary><strong>Capture from the terminal</strong></summary>
+
+```sh
+omacap --capture-region --notify
+omacap --capture-window --notify
+omacap --capture-fullscreen --copy
+omacap --scroll
+omacap --editor window
+omacap --file /path/to/image.png
+omacap --clipboard
+```
+
+Use `--copy` or `--save` to output directly. Combine them to copy and save.
+`omacap --help` lists the available modes and options.
+
+</details>
+
+## Configure
+
+Defaults work out of the box. Optional settings live in
+`~/.config/omacap/omacap.conf`.
+
+<details>
+<summary><strong>Output and editor presentation</strong></summary>
+
+```ini
+[output]
+autosave = false
+directory = ~/Pictures/Screenshots
+
+[editor]
+mode = overlay
+```
+
+These are the defaults. Set `mode = window` for a normal compositor window.
+`OMACAP_SCREENSHOT_DIR` overrides the save directory.
+
+</details>
+
+<details>
+<summary><strong>Temporary data</strong></summary>
+
+Omacap keeps no screenshot history. Notification and preview actions use temporary
+source images, edit logs, and thumbnails under `$XDG_RUNTIME_DIR/omacap/handoffs/`.
+Documents older than 15 minutes are pruned when a new one is published.
+Copy from the editor creates no additional handoff document.
+
+</details>
+
+<details>
+<summary><strong>Update</strong></summary>
+
+From your checkout:
+
+```sh
+git pull --ff-only
+./install-omarchy
+```
+
+</details>
+
+## Development
+
+Built with **C++23 and Qt 6.8+**, LayerShellQt, Wayland, and libdeflate.
+Runtime tools include `hyprctl`, `wl-copy`, and `wl-paste`; OCR uses `tesseract`.
+See [dependencies](docs/dependencies.md) for the full list.
 
 ```sh
 make build
-./build/omacap
-./build/omacap --file /absolute/path/to/image.png
-./build/omacap --capture-region --copy
+make check
 ```
 
-`./install-omarchy` installs dependencies and the app under `~/.local`.
-It does not change Hyprland bindings. `OMACAP_PREFIX` selects another prefix.
+Checks build the app, run headless interaction tests, and run available static
+analysis. Generated test screenshots stay in `build/smoke-output/`.
 
-## Controls
+Omacap is a UI-focused fork of [Omasnap](https://github.com/omacom/omasnap),
+starting at `6208946`. Original MIT copyright and bundled font/icon notices
+are retained. See the [changelog](CHANGELOG.md) and [font notices](assets/FONTS.md).
+The PNG metadata key `Omasnap logical size` is shared with upstream.
 
-| Key | Action |
-| --- | --- |
-| Esc | Cancel / close; dismiss an open More menu first |
-| Enter | Copy only |
-| V / A / F | Select / arrow / draw |
-| R / E / T / D | Rectangle / ellipse / text / redact |
-| Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
-| Ctrl+C / Ctrl+S | Copy only / save only |
-| Ctrl+P | Pin |
-| ? | Toggle shortcuts |
+An optional [notification hover patch](patches/omarchy-notifications-hover.patch)
+is included for a user-owned clone of Omarchy's notification plugin.
 
-Optional INI config: `~/.config/omacap/omacap.conf`. Captures go to
-`~/Pictures/Screenshots`; `OMACAP_SCREENSHOT_DIR` overrides the destination.
-Edit/Save notifications use temporary runtime data, separate from saved files.
-The upstream capture/editor flags remain available through `--help`.
+Found a bug? [Open an issue](https://github.com/hudrucan/omacap/issues) with your
+Omarchy and Hyprland versions and steps to reproduce.
 
-## Checks and attribution
+---
 
-`make check` builds, runs the headless interaction suite, and runs available
-static analysis. Generated screenshots stay in `build/smoke-output/`.
-
-Original MIT copyright and bundled font/icon notices are retained. The
-[changelog](CHANGELOG.md) records upstream history. The PNG metadata key
-`Omasnap logical size` stays unchanged to preserve shared image-scale metadata.
-
-The local Omarchy notification hover fix is preserved in
-[`patches/omarchy-notifications-hover.patch`](patches/omarchy-notifications-hover.patch)
-for the user-owned clone of `omarchy.notifications`.
+<p align="center">Made for <a href="https://omarchy.org">Omarchy</a> · <a href="LICENSE">MIT licensed</a></p>

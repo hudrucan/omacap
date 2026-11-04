@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="380" viewBox="0 0 1280 380" fill="none">
+  <title>Omacap</title>
+  <desc>Capture a moment. Copy it anywhere. Native screenshots for Omarchy.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1280" y2="380" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1c293b"/><stop offset="1" stop-color="#10161f"/>
+    </linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" stroke="#86b7ff" stroke-opacity=".035"/>
+    </pattern>
+  </defs>
+  <rect width="1280" height="380" rx="20" fill="url(#bg)"/>
+  <rect width="1280" height="380" rx="20" fill="url(#grid)"/>
+  <rect x=".5" y=".5" width="1279" height="379" rx="19.5" stroke="#354359"/>
+  <g stroke="#86b7ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M77 66H65V78M92 66H104V78M65 94V106H77M104 94V106H92"/>
+  </g>
+  <rect x="79" y="80" width="11" height="12" rx="3" fill="#eef4ff"/>
+  <g font-family="DejaVu Sans, sans-serif">
+    <text x="120" y="102" fill="#eef4ff" font-size="46" font-weight="700" letter-spacing="-2">Omacap</text>
+    <text x="64" y="185" fill="#eef4ff" font-size="38" font-weight="700" letter-spacing="-1">Capture a moment.</text>
+    <text x="64" y="235" fill="#86b7ff" font-size="38" font-weight="700" letter-spacing="-1">Copy it anywhere.</text>
+    <text x="64" y="307" fill="#9cacbf" font-size="16">NATIVE SCREENSHOTS FOR OMARCHY</text>
+  </g>
+  <g transform="translate(620 50)">
+    <rect width="596" height="280" rx="12" fill="#111923" stroke="#455974"/>
+    <path d="M1 28H595" stroke="#354359"/>
+    <circle cx="16" cy="14" r="3" fill="#86b7ff"/>
+    <path d="M29 14H60M540 14H578" stroke="#607590" stroke-width="3" stroke-linecap="round"/>
+    <rect x="45" y="62" width="350" height="158" rx="7" fill="#eaf0f8"/>
+    <rect x="61" y="78" width="104" height="126" rx="5" fill="#d7e3f2"/>
+    <path d="M77 96H143M77 113H125M77 130H136" stroke="#94abc7" stroke-width="5" stroke-linecap="round"/>
+    <rect x="183" y="78" width="195" height="55" rx="5" fill="white"/>
+    <path d="M198 94H320M198 111H292" stroke="#a4b6cc" stroke-width="5" stroke-linecap="round"/>
+    <rect x="183" y="149" width="88" height="55" rx="5" fill="white"/>
+    <rect x="288" y="149" width="90" height="55" rx="5" fill="#d7e3f2"/>
+    <rect x="36" y="53" width="368" height="176" rx="10" stroke="#86b7ff" stroke-dasharray="5 5"/>
+    <path d="M36 69V53H52M388 53H404V69M36 213V229H52M388 229H404V213" stroke="#86b7ff" stroke-width="3" stroke-linecap="round"/>
+    <path d="M217 177C236 151 272 144 307 156M296 142L309 156L291 162" stroke="#397cd2" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="418" y="106" width="152" height="88" rx="12" fill="#202e40" stroke="#526e93"/>
+    <path d="M477 128L483 134L494 122" stroke="#86b7ff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <g font-family="DejaVu Sans, sans-serif" text-anchor="middle">
+      <text x="494" y="156" font-size="13" fill="#e0eaff">Copied to clipboard</text>
+      <text x="456" y="179" font-size="11" fill="#91b7e9">Edit</text>
+      <text x="530" y="179" font-size="11" fill="#91b7e9">Save</text>
+    </g>
+    <rect x="72" y="242" width="297" height="28" rx="9" fill="#1d2a3c" stroke="#455974"/>
+    <g stroke="#afc0d6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M89 250V260L93 256L97 263M113 256H129M124 251L129 256L124 261M146 259L154 251L159 256"/>
+      <rect x="177" y="250" width="11" height="11" rx="1"/>
+      <path d="M209 250H221M215 250V261"/>
+      <circle cx="244" cy="256" r="5" fill="#86b7ff" stroke="none"/>
+    </g>
+    <rect x="278" y="246" width="64" height="20" rx="5" fill="#397cd2"/>
+    <text x="310" y="260" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="10" font-weight="700" fill="white">Copy</text>
+    <path d="M353 251L360 258M360 251L353 258" stroke="#afc0d6" stroke-width="1.5" stroke-linecap="round"/>
+  </g>
+</svg>
