@@ -71,12 +71,12 @@ QString editorFloatRuleScript(bool floating) {
   // so a floating session's rule cannot leak into tiled use. The title
   // pattern skips the pins, whose titles have no space after the name.
   return floating ? QStringLiteral(
-                        "hl.window_rule({ name = \"omacap-editor-float\", "
-                        "match = { title = \"^omacap( .+)?$\" }, "
+                        "hl.window_rule({ name = \"omarchy-capture-editor-float\", "
+                        "match = { title = \"^Omarchy Capture( .+)?$\" }, "
                         "float = true, center = true })")
                   : QStringLiteral(
-                        "hl.window_rule({ name = \"omacap-editor-float\", "
-                        "match = { title = \"^omacap( .+)?$\" }, "
+                        "hl.window_rule({ name = \"omarchy-capture-editor-float\", "
+                        "match = { title = \"^Omarchy Capture( .+)?$\" }, "
                         "enabled = false })");
 }
 
@@ -98,5 +98,5 @@ bool loadEditorWindowBackdropOpaque(const QString &filePath) {
 
 QString defaultConfigPath() {
   return QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) +
-         QStringLiteral("/omacap/omacap.conf");
+         QStringLiteral("/omarchy-capture/omarchy-capture.conf");
 }

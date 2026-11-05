@@ -3,8 +3,8 @@
  *  frames, classifies each adjacent pair (accepting only a decisive forward
  *  match), stitches the accepted deltas, and writes the result.
  *
- *  Env: OMACAP_STITCH_REPLAY_DIR (frames dir), OMACAP_STITCH_REPLAY_OUT
- *  (output PNG), OMACAP_STITCH_REPLAY_AXIS (vertical|horizontal, default
+ *  Env: OMARCHY_CAPTURE_STITCH_REPLAY_DIR (frames dir), OMARCHY_CAPTURE_STITCH_REPLAY_OUT
+ *  (output PNG), OMARCHY_CAPTURE_STITCH_REPLAY_AXIS (vertical|horizontal, default
  *  vertical). With --classify it prints per-frame classifications instead. */
 #include "stitch.hpp"
 
@@ -19,14 +19,14 @@ using namespace stitch;
 int main(int argc, char **argv) {
   const bool classifyOnly = argc > 1 && QString::fromLocal8Bit(argv[1]) ==
                                             QStringLiteral("--classify");
-  const QString dir = qEnvironmentVariable("OMACAP_STITCH_REPLAY_DIR");
-  const QString out = qEnvironmentVariable("OMACAP_STITCH_REPLAY_OUT");
-  const Axis axis = qEnvironmentVariable("OMACAP_STITCH_REPLAY_AXIS") ==
+  const QString dir = qEnvironmentVariable("OMARCHY_CAPTURE_STITCH_REPLAY_DIR");
+  const QString out = qEnvironmentVariable("OMARCHY_CAPTURE_STITCH_REPLAY_OUT");
+  const Axis axis = qEnvironmentVariable("OMARCHY_CAPTURE_STITCH_REPLAY_AXIS") ==
                             QStringLiteral("horizontal")
                         ? Axis::Horizontal
                         : Axis::Vertical;
   if (dir.isEmpty()) {
-    std::fprintf(stderr, "OMACAP_STITCH_REPLAY_DIR unset\n");
+    std::fprintf(stderr, "OMARCHY_CAPTURE_STITCH_REPLAY_DIR unset\n");
     return 2;
   }
   QStringList files = QDir(dir).entryList({QStringLiteral("frame-*.png")},

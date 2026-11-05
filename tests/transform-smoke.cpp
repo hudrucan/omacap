@@ -56,7 +56,7 @@ bool runTransformSmoke(QString &error) {
       "  printf '[{\"focused\":true,\"scale\":1.0,\"width\":300,"
       "\"height\":200,\"transform\":%s,\"name\":\"TEST-ROTATED\","
       "\"x\":0,\"y\":0,\"activeWorkspace\":{\"id\":7}}]\\n' "
-      "\"$OMACAP_TEST_TRANSFORM\"\n"
+      "\"$OMARCHY_CAPTURE_TEST_TRANSFORM\"\n"
       "else\n"
       "  printf '[{\"workspace\":{\"id\":7},\"at\":[0,0],\"size\":[100,100],"
       "\"title\":\"Test window\",\"stableId\":\"w1\"}]\\n'\n"
@@ -76,14 +76,14 @@ bool runTransformSmoke(QString &error) {
 
   const QByteArray originalPath = qgetenv("PATH");
   qputenv("PATH", fakeCommands.path().toUtf8() + ':' + originalPath);
-  qputenv("OMACAP_TEST_CAPTURE", capturePath.toUtf8());
+  qputenv("OMARCHY_CAPTURE_TEST_CAPTURE", capturePath.toUtf8());
   const auto restoreEnvironment = [&originalPath] {
     qputenv("PATH", originalPath);
-    qunsetenv("OMACAP_TEST_CAPTURE");
-    qunsetenv("OMACAP_TEST_TRANSFORM");
+    qunsetenv("OMARCHY_CAPTURE_TEST_CAPTURE");
+    qunsetenv("OMARCHY_CAPTURE_TEST_TRANSFORM");
   };
   for (const int transform : {1, 3, 5, 7}) {
-    qputenv("OMACAP_TEST_TRANSFORM", QByteArray::number(transform));
+    qputenv("OMARCHY_CAPTURE_TEST_TRANSFORM", QByteArray::number(transform));
     CaptureData rotatedCapture;
     if (!captureFocusedMonitor(rotatedCapture, true, error) ||
         rotatedCapture.monitor.geometry.size() != QSize(200, 300) ||
@@ -97,7 +97,7 @@ bool runTransformSmoke(QString &error) {
   }
 
   // Callers that never show the overlay skip window discovery entirely.
-  qputenv("OMACAP_TEST_TRANSFORM", QByteArrayLiteral("0"));
+  qputenv("OMARCHY_CAPTURE_TEST_TRANSFORM", QByteArrayLiteral("0"));
   CaptureData withoutWindows;
   if (!captureFocusedMonitor(withoutWindows, false, error) ||
       withoutWindows.source.size() != QSize(300, 200) ||
@@ -110,7 +110,7 @@ bool runTransformSmoke(QString &error) {
   }
 
   // Without a test capture, missing output-capture protocol must fail clearly.
-  qunsetenv("OMACAP_TEST_CAPTURE");
+  qunsetenv("OMARCHY_CAPTURE_TEST_CAPTURE");
   CaptureData missingProtocol;
   QString protocolError;
   const bool captured =

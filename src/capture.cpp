@@ -305,9 +305,9 @@ QString secureRuntimeDirectory() {
       QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
   if (runtime.isEmpty()) {
     runtime = QDir(QDir::tempPath())
-                  .filePath(QStringLiteral("omacap-%1").arg(::getuid()));
+                  .filePath(QStringLiteral("omarchy-capture-%1").arg(::getuid()));
   } else {
-    runtime = QDir(runtime).filePath(QStringLiteral("omacap"));
+    runtime = QDir(runtime).filePath(QStringLiteral("omarchy-capture"));
   }
   return ensurePrivateDirectory(runtime) ? QDir::cleanPath(runtime) : QString();
 }
@@ -407,12 +407,12 @@ QString runtimePath(const QString &name) {
 }
 
 QString suggestedScreenshotPathImpl(const QString &appSlug) {
-  // Precedence: OMACAP_SCREENSHOT_DIR, then [output] directory in the
+  // Precedence: OMARCHY_CAPTURE_SCREENSHOT_DIR, then [output] directory in the
   // config, then ~/Pictures/Screenshots. The filename pattern comes from
   // [output] filename; its default keeps the date first so the folder always
   // sorts chronologically.
   const OutputConfig config = loadOutputConfig(defaultConfigPath());
-  QString root = qEnvironmentVariable("OMACAP_SCREENSHOT_DIR");
+  QString root = qEnvironmentVariable("OMARCHY_CAPTURE_SCREENSHOT_DIR");
   if (root.isEmpty())
     root = config.directory;
   if (root.isEmpty())
@@ -1387,7 +1387,7 @@ bool captureMonitorPixels(const MonitorInfo &monitor, CaptureData &capture,
     startupTimingMark("hyprctl clients launched");
   }
 
-  const QString testCapture = qEnvironmentVariable("OMACAP_TEST_CAPTURE");
+  const QString testCapture = qEnvironmentVariable("OMARCHY_CAPTURE_TEST_CAPTURE");
   if (!testCapture.isEmpty()) {
     if (!capture.source.load(testCapture)) {
       error = QStringLiteral("Screen capture failed: could not load test "
@@ -2517,7 +2517,7 @@ bool loadOperationLog(const QString &path, OperationLog &log, QString &error,
     error = QStringLiteral("Could not parse operation log: %1")
                 .arg(parseError.errorString());
     // Well-formed JSON that is not an object is another program's; text that
-    // does not parse may be omacap's own log, cut short.
+    // does not parse may be omarchy-capture's own log, cut short.
     if (notOperationLog)
       *notOperationLog = parseError.error == QJsonParseError::NoError;
     return false;
@@ -2526,7 +2526,7 @@ bool loadOperationLog(const QString &path, OperationLog &log, QString &error,
   if (root.value(QStringLiteral("version")).toInt() != 1 ||
       !root.value(QStringLiteral("ops")).isArray()) {
     error = QStringLiteral("Unsupported operation log version");
-    // Every log omacap writes has a numeric version and an ops array; an
+    // Every log omarchy-capture writes has a numeric version and an ops array; an
     // object without both is some other program's JSON sharing the name.
     if (notOperationLog)
       *notOperationLog = !root.value(QStringLiteral("version")).isDouble() ||
@@ -2566,7 +2566,7 @@ bool loadSidecarOperationLog(const QString &imagePath, OperationLog &log,
   // The sidecar is only a naming convention: report.png opened from a
   // download folder can sit beside another program's report.json. That file
   // is not this image's edit history, so open the image plain instead of
-  // refusing it. A damaged omacap log is still an error.
+  // refusing it. A damaged omarchy-capture log is still an error.
   bool notOperationLog = false;
   OperationLog loaded;
   if (loadOperationLog(sidecar, loaded, error, &notOperationLog)) {
@@ -2575,7 +2575,7 @@ bool loadSidecarOperationLog(const QString &imagePath, OperationLog &log,
   }
   if (!notOperationLog)
     return false;
-  qWarning().noquote() << QStringLiteral("Ignoring %1: not an omacap "
+  qWarning().noquote() << QStringLiteral("Ignoring %1: not an omarchy-capture "
                                          "operation log")
                               .arg(sidecar);
   error.clear();
@@ -2599,7 +2599,7 @@ QString recognizeText(const QImage &image, QString &error) {
     return {};
   }
 
-  QString languages = qEnvironmentVariable("OMACAP_OCR_LANGS");
+  QString languages = qEnvironmentVariable("OMARCHY_CAPTURE_OCR_LANGS");
   if (languages.isEmpty())
     languages =
         qEnvironmentVariable("OMARCHY_OCR_LANGS", QStringLiteral("eng"));
@@ -2670,19 +2670,19 @@ QStringList captureNotificationArguments(
     return toast && text ? text(english) : english;
   };
   QStringList arguments{QStringLiteral("-g"), QStringLiteral(""),
-                        QStringLiteral("--app-name"), QStringLiteral("omacap"),
+                        QStringLiteral("--app-name"), QStringLiteral("Omarchy Capture"),
                         QStringLiteral("-t"),
                         toast ? QStringLiteral("7000") : QStringLiteral("4500"),
                         word(message)};
   if (imagePath.isEmpty())
     return arguments;
-  QString omacap = QDir(QCoreApplication::applicationDirPath())
-                        .filePath(QStringLiteral("omacap"));
-  if (!QFileInfo::exists(omacap))
-    omacap = QStringLiteral("omacap");
+  QString omarchyCapture = QDir(QCoreApplication::applicationDirPath())
+                        .filePath(QStringLiteral("omarchy-capture"));
+  if (!QFileInfo::exists(omarchyCapture))
+    omarchyCapture = QStringLiteral("omarchy-capture");
   // --exec consumes the remaining argv without shell parsing. No hover actions.
   arguments << word(QStringLiteral("Click to edit")) << QStringLiteral("--image")
-            << imagePath << QStringLiteral("--exec") << omacap;
+            << imagePath << QStringLiteral("--exec") << omarchyCapture;
   if (toast)
     arguments << QStringLiteral("--notify");
   arguments << QStringLiteral("--editor") << QStringLiteral("overlay");

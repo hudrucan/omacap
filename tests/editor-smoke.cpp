@@ -2574,24 +2574,24 @@ bool runPostCaptureChecks(QString &error, bool autosave) {
   };
   if (!executable(QStringLiteral("wl-copy"), QByteArrayLiteral(
           "#!/bin/sh\n"
-          "if [ -n \"$OMACAP_TEST_COPY_FAIL\" ]; then echo unavailable >&2; exit 1; fi\n"
-          "cat > \"$OMACAP_TEST_CLIPBOARD\"\n")) ||
+          "if [ -n \"$OMARCHY_CAPTURE_TEST_COPY_FAIL\" ]; then echo unavailable >&2; exit 1; fi\n"
+          "cat > \"$OMARCHY_CAPTURE_TEST_CLIPBOARD\"\n")) ||
       !executable(QStringLiteral("wl-paste"), QByteArrayLiteral(
-          "#!/bin/sh\ncat \"$OMACAP_TEST_CLIPBOARD\"\n")))
+          "#!/bin/sh\ncat \"$OMARCHY_CAPTURE_TEST_CLIPBOARD\"\n")))
     return false;
   const QByteArray oldPath = qgetenv("PATH");
-  const QByteArray oldClipboard = qgetenv("OMACAP_TEST_CLIPBOARD");
-  const QByteArray oldFailure = qgetenv("OMACAP_TEST_COPY_FAIL");
+  const QByteArray oldClipboard = qgetenv("OMARCHY_CAPTURE_TEST_CLIPBOARD");
+  const QByteArray oldFailure = qgetenv("OMARCHY_CAPTURE_TEST_COPY_FAIL");
   const auto restore = qScopeGuard([&] {
     qputenv("PATH", oldPath);
-    oldClipboard.isNull() ? qunsetenv("OMACAP_TEST_CLIPBOARD")
-                          : qputenv("OMACAP_TEST_CLIPBOARD", oldClipboard);
-    oldFailure.isNull() ? qunsetenv("OMACAP_TEST_COPY_FAIL")
-                        : qputenv("OMACAP_TEST_COPY_FAIL", oldFailure);
+    oldClipboard.isNull() ? qunsetenv("OMARCHY_CAPTURE_TEST_CLIPBOARD")
+                          : qputenv("OMARCHY_CAPTURE_TEST_CLIPBOARD", oldClipboard);
+    oldFailure.isNull() ? qunsetenv("OMARCHY_CAPTURE_TEST_COPY_FAIL")
+                        : qputenv("OMARCHY_CAPTURE_TEST_COPY_FAIL", oldFailure);
   });
   qputenv("PATH", directory.path().toUtf8() + ':' + oldPath);
-  qputenv("OMACAP_TEST_CLIPBOARD", clipboard.toUtf8());
-  qunsetenv("OMACAP_TEST_COPY_FAIL");
+  qputenv("OMARCHY_CAPTURE_TEST_CLIPBOARD", clipboard.toUtf8());
+  qunsetenv("OMARCHY_CAPTURE_TEST_COPY_FAIL");
 
   CaptureData capture;
   capture.monitor.geometry = {0, 0, 800, 600};
@@ -2604,12 +2604,12 @@ bool runPostCaptureChecks(QString &error, bool autosave) {
                        QStringLiteral("fixture"), QStringLiteral("test")}};
 
   const QByteArray oldConfigHome = qgetenv("XDG_CONFIG_HOME");
-  const QByteArray oldSaveDir = qgetenv("OMACAP_SCREENSHOT_DIR");
+  const QByteArray oldSaveDir = qgetenv("OMARCHY_CAPTURE_SCREENSHOT_DIR");
   const auto restoreAutosave = qScopeGuard([&] {
     oldConfigHome.isNull() ? qunsetenv("XDG_CONFIG_HOME") : qputenv("XDG_CONFIG_HOME", oldConfigHome);
-    oldSaveDir.isNull() ? qunsetenv("OMACAP_SCREENSHOT_DIR") : qputenv("OMACAP_SCREENSHOT_DIR", oldSaveDir);
+    oldSaveDir.isNull() ? qunsetenv("OMARCHY_CAPTURE_SCREENSHOT_DIR") : qputenv("OMARCHY_CAPTURE_SCREENSHOT_DIR", oldSaveDir);
   });
-  qputenv("OMACAP_SCREENSHOT_DIR", directory.filePath(QStringLiteral("saved")).toUtf8());
+  qputenv("OMARCHY_CAPTURE_SCREENSHOT_DIR", directory.filePath(QStringLiteral("saved")).toUtf8());
   using Mode = CaptureEditor::CaptureMode;
   qputenv("XDG_CONFIG_HOME", directory.path().toUtf8());
   // Copy-only is the default; cover autosave as an explicit override.
@@ -2670,7 +2670,7 @@ bool runPostCaptureChecks(QString &error, bool autosave) {
     const qsizetype idIndex = toast.indexOf(QStringLiteral("--capture-id"));
     const auto handoff = findCaptureHandoff(toast.value(idIndex + 1));
     OperationLog log;
-    const auto saved = QDir(qEnvironmentVariable("OMACAP_SCREENSHOT_DIR")).entryList(
+    const auto saved = QDir(qEnvironmentVariable("OMARCHY_CAPTURE_SCREENSHOT_DIR")).entryList(
         {QStringLiteral("*.png")}, QDir::Files);
     if (editor.isVisible() || !launchedOnWorker ||
         toast.contains(QStringLiteral("--action")) || idIndex < 0 || !handoff ||
@@ -2741,7 +2741,7 @@ bool runPostCaptureChecks(QString &error, bool autosave) {
       return false;
     for (const bool notificationEdit : {true, false}) {
       const QTemporaryDir savedDirectory;
-      qputenv("OMACAP_SCREENSHOT_DIR", savedDirectory.path().toUtf8());
+      qputenv("OMARCHY_CAPTURE_SCREENSHOT_DIR", savedDirectory.path().toUtf8());
       QStringList toast;
       int notificationCount = 0;
       const auto launcher = [&](const QString &program, const QStringList &args) {
@@ -2818,7 +2818,7 @@ bool runPostCaptureChecks(QString &error, bool autosave) {
         return false;
       }
     }
-    qputenv("OMACAP_SCREENSHOT_DIR", directory.filePath(QStringLiteral("saved")).toUtf8());
+    qputenv("OMARCHY_CAPTURE_SCREENSHOT_DIR", directory.filePath(QStringLiteral("saved")).toUtf8());
   }
   // Both picker shortcuts keep every capture kind in the editor without
   // copying or sending a notification. Holding the key must not toggle it off.
@@ -2886,12 +2886,12 @@ bool runPostCaptureChecks(QString &error, bool autosave) {
     QTemporaryDir savedDirectory;
     if (!savedDirectory.isValid())
       return false;
-    const QByteArray oldOutputDir = qgetenv("OMACAP_SCREENSHOT_DIR");
+    const QByteArray oldOutputDir = qgetenv("OMARCHY_CAPTURE_SCREENSHOT_DIR");
     const auto restoreOutput = qScopeGuard([&] {
-      oldOutputDir.isNull() ? qunsetenv("OMACAP_SCREENSHOT_DIR")
-                           : qputenv("OMACAP_SCREENSHOT_DIR", oldOutputDir);
+      oldOutputDir.isNull() ? qunsetenv("OMARCHY_CAPTURE_SCREENSHOT_DIR")
+                           : qputenv("OMARCHY_CAPTURE_SCREENSHOT_DIR", oldOutputDir);
     });
-    qputenv("OMACAP_SCREENSHOT_DIR", savedDirectory.path().toUtf8());
+    qputenv("OMARCHY_CAPTURE_SCREENSHOT_DIR", savedDirectory.path().toUtf8());
     QImage clipboardBefore(3, 2, QImage::Format_ARGB32_Premultiplied);
     clipboardBefore.fill(Qt::yellow);
     if (!clipboardBefore.save(clipboard))
@@ -2926,7 +2926,7 @@ bool runPostCaptureChecks(QString &error, bool autosave) {
   }
 
   // Clipboard failure leaves the capture available for recovery.
-  qputenv("OMACAP_TEST_COPY_FAIL", "1");
+  qputenv("OMARCHY_CAPTURE_TEST_COPY_FAIL", "1");
   CaptureEditor failed(capture, Mode::Fullscreen, QuickOutputMode::CopyAndNotify);
   failed.setProcessLauncherForTest([](const QString &, const QStringList &) { return false; });
   failed.show();
@@ -2955,16 +2955,16 @@ bool runQuickOutputChecks(QString &error) {
     error = QStringLiteral("Could not create quick-output directory");
     return false;
   }
-  const QByteArray previousDir = qgetenv("OMACAP_SCREENSHOT_DIR");
-  qputenv("OMACAP_SCREENSHOT_DIR", directory.path().toUtf8());
+  const QByteArray previousDir = qgetenv("OMARCHY_CAPTURE_SCREENSHOT_DIR");
+  qputenv("OMARCHY_CAPTURE_SCREENSHOT_DIR", directory.path().toUtf8());
   outputError.clear();
   const bool saved = quickOutput(image, QuickOutputMode::Save, outputError, QSize(16, 12));
   const QStringList files =
       QDir(directory.path()).entryList({QStringLiteral("*.png")}, QDir::Files);
   if (previousDir.isEmpty())
-    qunsetenv("OMACAP_SCREENSHOT_DIR");
+    qunsetenv("OMARCHY_CAPTURE_SCREENSHOT_DIR");
   else
-    qputenv("OMACAP_SCREENSHOT_DIR", previousDir);
+    qputenv("OMARCHY_CAPTURE_SCREENSHOT_DIR", previousDir);
   if (!saved || !outputError.isEmpty() || files.size() != 1 ||
       QImage(QDir(directory.path()).filePath(files.constFirst())).isNull() ||
       QFile::exists(temporarySnapshotPath())) {
@@ -3064,7 +3064,7 @@ bool runScreenshotFilenameChecks(QString &error) {
   }
   {
     const QString configPath =
-        QDir(directory.path()).filePath(QStringLiteral("omacap.conf"));
+        QDir(directory.path()).filePath(QStringLiteral("omarchy-capture.conf"));
     QFile configFile(configPath);
     if (!configFile.open(QIODevice::WriteOnly | QIODevice::Text) ||
         configFile.write("[output]\ndirectory = ~/Captures\n"
@@ -3097,13 +3097,13 @@ bool runScreenshotFilenameChecks(QString &error) {
       return false;
     }
   }
-  const QByteArray previousDir = qgetenv("OMACAP_SCREENSHOT_DIR");
-  qputenv("OMACAP_SCREENSHOT_DIR", directory.path().toUtf8());
+  const QByteArray previousDir = qgetenv("OMARCHY_CAPTURE_SCREENSHOT_DIR");
+  qputenv("OMARCHY_CAPTURE_SCREENSHOT_DIR", directory.path().toUtf8());
   const auto restoreDir = qScopeGuard([&previousDir] {
     if (previousDir.isEmpty())
-      qunsetenv("OMACAP_SCREENSHOT_DIR");
+      qunsetenv("OMARCHY_CAPTURE_SCREENSHOT_DIR");
     else
-      qputenv("OMACAP_SCREENSHOT_DIR", previousDir);
+      qputenv("OMARCHY_CAPTURE_SCREENSHOT_DIR", previousDir);
   });
   QImage image(4, 4, QImage::Format_RGB32);
   image.fill(Qt::red);
@@ -3143,10 +3143,10 @@ bool runCrashSnapshotChecks(const CaptureData &capture, QString &error) {
     error = QStringLiteral("Could not create crash-snapshot directory");
     return false;
   }
-  const QByteArray previousDir = qgetenv("OMACAP_SCREENSHOT_DIR");
-  qputenv("OMACAP_SCREENSHOT_DIR", directory.path().toUtf8());
+  const QByteArray previousDir = qgetenv("OMARCHY_CAPTURE_SCREENSHOT_DIR");
+  qputenv("OMARCHY_CAPTURE_SCREENSHOT_DIR", directory.path().toUtf8());
   const auto restoreDir = qScopeGuard(
-      [&previousDir] { qputenv("OMACAP_SCREENSHOT_DIR", previousDir); });
+      [&previousDir] { qputenv("OMARCHY_CAPTURE_SCREENSHOT_DIR", previousDir); });
   const QString snapshotPath = temporarySnapshotPath();
   QFile::remove(snapshotPath);
   const auto settleUntilWritten = [&snapshotPath] {
@@ -3434,15 +3434,15 @@ bool runTextOutlineCheck(QString &error) {
 /** The editor window mode config key and the windowed editor's sizing. */
 bool runEditorWindowConfigCheck(QString &error) {
   const QString path =
-      QDir(QDir::tempPath()).filePath(QStringLiteral("omacap-editor-mode.conf"));
+      QDir(QDir::tempPath()).filePath(QStringLiteral("omarchy-capture-editor-mode.conf"));
   const QString floatRule = editorFloatRuleScript(true);
   const QString tiledRule = editorFloatRuleScript(false);
   if (!floatRule.contains(QStringLiteral("float = true")) ||
       !floatRule.contains(QStringLiteral("center = true")) ||
       tiledRule.contains(QStringLiteral("float = true")) ||
       !tiledRule.contains(QStringLiteral("enabled = false")) ||
-      !floatRule.contains(QStringLiteral("omacap-editor-float")) ||
-      !tiledRule.contains(QStringLiteral("omacap-editor-float"))) {
+      !floatRule.contains(QStringLiteral("omarchy-capture-editor-float")) ||
+      !tiledRule.contains(QStringLiteral("omarchy-capture-editor-float"))) {
     error = QStringLiteral("Editor float rule script is wrong");
     return false;
   }
@@ -3460,7 +3460,7 @@ bool runEditorWindowConfigCheck(QString &error) {
   const bool absent = loadEditorWindowMode(path);
   QFile::remove(path);
   const bool missing =
-      loadEditorWindowMode(QStringLiteral("/nonexistent/omacap.conf"));
+      loadEditorWindowMode(QStringLiteral("/nonexistent/omarchy-capture.conf"));
   if (!window || overlay || absent || missing) {
     error = QStringLiteral("[editor] mode was not read as window-or-default");
     return false;
@@ -3472,7 +3472,7 @@ bool runEditorWindowConfigCheck(QString &error) {
   const bool floating = loadEditorWindowFloating(path);
   QFile::remove(path);
   const bool floatDefault =
-      loadEditorWindowFloating(QStringLiteral("/nonexistent/omacap.conf"));
+      loadEditorWindowFloating(QStringLiteral("/nonexistent/omarchy-capture.conf"));
   if (tiled || !floating || !floatDefault) {
     error = QStringLiteral("[editor] window was not read as floating-or-tiled");
     return false;
@@ -3482,7 +3482,7 @@ bool runEditorWindowConfigCheck(QString &error) {
   const bool translucent = loadEditorWindowBackdropOpaque(path);
   QFile::remove(path);
   const bool opaqueDefault =
-      loadEditorWindowBackdropOpaque(QStringLiteral("/nonexistent/omacap.conf"));
+      loadEditorWindowBackdropOpaque(QStringLiteral("/nonexistent/omarchy-capture.conf"));
   if (translucent || !opaqueDefault) {
     error = QStringLiteral("[editor] backdrop was not read as opaque-or-not");
     return false;
@@ -4060,7 +4060,7 @@ bool runDraftViewLockCheck(QApplication &application, QString &error) {
 /** `--file` reads a same-name .json beside the image as its
  *  operation log. Another program's report.json beside report.png is not
  *  one: the image must still open plain.
- *  omacap's own log there is still restored, and a broken one still fails. */
+ *  omarchy-capture's own log there is still restored, and a broken one still fails. */
 bool runForeignSidecarChecks(QString &error) {
   const QTemporaryDir files;
   const QTemporaryDir runtime;
@@ -4107,14 +4107,14 @@ bool runForeignSidecarChecks(QString &error) {
     }
 
   }
-  // omacap's own log beside an image is still restored...
+  // omarchy-capture's own log beside an image is still restored...
   const QString own = folder.filePath(QStringLiteral("own.png"));
   OperationLog ownLog;
   ownLog.previewSize = {200, 150};
   QString saveError;
   if (!image.save(own) ||
       !saveOperationLog(operationLogPath(own), ownLog, saveError)) {
-    error = QStringLiteral("Could not write the omacap sidecar fixture: %1")
+    error = QStringLiteral("Could not write the omarchy-capture sidecar fixture: %1")
                 .arg(saveError);
     return false;
   }
@@ -4122,7 +4122,7 @@ bool runForeignSidecarChecks(QString &error) {
   QString loadError;
   if (!loadSidecarOperationLog(own, restored, loadError) ||
       restored.previewSize != QSize(200, 150)) {
-    error = QStringLiteral("omacap's own sidecar log was not restored: %1")
+    error = QStringLiteral("omarchy-capture's own sidecar log was not restored: %1")
                 .arg(loadError);
     return false;
   }
@@ -4137,11 +4137,11 @@ bool runForeignSidecarChecks(QString &error) {
   }
   OperationLog brokenLog;
   if (loadSidecarOperationLog(broken, brokenLog, loadError)) {
-    error = QStringLiteral("A broken omacap sidecar log was silently ignored");
+    error = QStringLiteral("A broken omarchy-capture sidecar log was silently ignored");
     return false;
   }
   // So is one cut short or emptied, which no longer parses as JSON, and one
-  // from another version of omacap.
+  // from another version of omarchy-capture.
   for (const Foreign &damaged : {
            Foreign{"truncated",
                    "{\"version\":1,\"index\":1,\"ops\":[{\"type\":\"annot"},
@@ -4157,7 +4157,7 @@ bool runForeignSidecarChecks(QString &error) {
     QString damagedError;
     if (loadSidecarOperationLog(png, damagedLog, damagedError) ||
         damagedError.isEmpty()) {
-      error = QStringLiteral("A %1 omacap sidecar log was silently ignored")
+      error = QStringLiteral("A %1 omarchy-capture sidecar log was silently ignored")
                   .arg(QString::fromLatin1(damaged.name));
       return false;
     }
@@ -4251,7 +4251,7 @@ bool runEditorHandoffRoundTrip(QApplication &application, QString &error) {
   for (const QStringList &arguments : windowArguments) {
     QCommandLineParser parser;
     configureCaptureCommandLine(parser, true);
-    if (!parser.parse(QStringList{QStringLiteral("omacap")} + arguments) ||
+    if (!parser.parse(QStringList{QStringLiteral("omarchy-capture")} + arguments) ||
         !windowedEditorRequested(parser, false)) {
       error = QStringLiteral("Handoff argv selected the wrong Wayland shell");
       return false;
@@ -4259,7 +4259,7 @@ bool runEditorHandoffRoundTrip(QApplication &application, QString &error) {
   }
   QCommandLineParser overlayParser;
   configureCaptureCommandLine(overlayParser);
-  if (!overlayParser.parse({QStringLiteral("omacap"), path,
+  if (!overlayParser.parse({QStringLiteral("omarchy-capture"), path,
                             QStringLiteral("--editor=window"), QStringLiteral("--editor=OVERLAY")}) ||
       windowedEditorRequested(overlayParser, true)) {
     error = QStringLiteral("Repeated editor options did not use the final value");
@@ -5411,9 +5411,9 @@ bool runAsyncCaptureRegionSmoke(QApplication &application, QString &error) {
   }
 
   const QByteArray oldPath = qgetenv("PATH");
-  const QByteArray oldCapture = qgetenv("OMACAP_TEST_CAPTURE");
+  const QByteArray oldCapture = qgetenv("OMARCHY_CAPTURE_TEST_CAPTURE");
   qputenv("PATH", commands.path().toUtf8() + ':' + oldPath);
-  qputenv("OMACAP_TEST_CAPTURE", sourcePath.toUtf8());
+  qputenv("OMARCHY_CAPTURE_TEST_CAPTURE", sourcePath.toUtf8());
 
   CaptureData capture;
   capture.monitor.name = QStringLiteral("TEST");
@@ -5446,9 +5446,9 @@ bool runAsyncCaptureRegionSmoke(QApplication &application, QString &error) {
     editor.close();
     qputenv("PATH", oldPath);
     if (oldCapture.isEmpty())
-      qunsetenv("OMACAP_TEST_CAPTURE");
+      qunsetenv("OMARCHY_CAPTURE_TEST_CAPTURE");
     else
-      qputenv("OMACAP_TEST_CAPTURE", oldCapture);
+      qputenv("OMARCHY_CAPTURE_TEST_CAPTURE", oldCapture);
     return false;
   }
 
@@ -5463,9 +5463,9 @@ bool runAsyncCaptureRegionSmoke(QApplication &application, QString &error) {
   editor.close();
   qputenv("PATH", oldPath);
   if (oldCapture.isEmpty())
-    qunsetenv("OMACAP_TEST_CAPTURE");
+    qunsetenv("OMARCHY_CAPTURE_TEST_CAPTURE");
   else
-    qputenv("OMACAP_TEST_CAPTURE", oldCapture);
+    qputenv("OMARCHY_CAPTURE_TEST_CAPTURE", oldCapture);
 
   if (selected.size() != QSize(160, 120)) {
     error = QStringLiteral("Async capture region selection produced %1x%2")
@@ -5793,8 +5793,8 @@ bool runNotificationArgvCheck(QString &error) {
   const QString &url = saved.at(exec + 5);
   if (program.isEmpty() || program.contains(QStringLiteral("'")) ||
       program.contains(QStringLiteral(" ")) ||
-      !program.endsWith(QStringLiteral("omacap"))) {
-    error = QStringLiteral("click program is not a bare omacap path: %1")
+      !program.endsWith(QStringLiteral("omarchy-capture"))) {
+    error = QStringLiteral("click program is not a bare omarchy-capture path: %1")
                 .arg(program);
     return false;
   }
@@ -8582,7 +8582,7 @@ bool runCenteredCreationSmoke(QApplication &application, QString &error) {
     return false;
   }
 
-  // Spotlight (Omacap's own drag-rectangle shape) centers the same way.
+  // Spotlight (Omarchy Capture's own drag-rectangle shape) centers the same way.
   QTest::keyClick(&editor, Qt::Key_S);
   QTest::mousePress(&editor, Qt::LeftButton, Qt::AltModifier, QPoint(600, 412));
   QTest::mouseMove(&editor, QPoint(660, 452), 20);
@@ -11837,7 +11837,7 @@ int main(int argc, char **argv) {
 
   QApplication application(argc, argv);
   QCommandLineParser parser;
-  parser.setApplicationDescription(QStringLiteral("Omacap headless smoke checks"));
+  parser.setApplicationDescription(QStringLiteral("Omarchy Capture headless smoke checks"));
   parser.addHelpOption();
   const QCommandLineOption outputDirectoryOption(
       QStringLiteral("output-dir"),
@@ -11872,7 +11872,7 @@ int main(int argc, char **argv) {
   QTemporaryDir smokeShelf;
   if (!smokeShelf.isValid())
     return 18;
-  qputenv("OMACAP_HANDOFF_DIR", smokeShelf.path().toUtf8());
+  qputenv("OMARCHY_CAPTURE_HANDOFF_DIR", smokeShelf.path().toUtf8());
   // Remembered UI state, such as a closed shortcuts card, stays out of the
   // developer's own.
   QTemporaryDir smokeState;
@@ -11897,7 +11897,7 @@ int main(int argc, char **argv) {
   // connection; Qt's platform does not matter): open a session on the named
   // output and grab several frames through the same buffer, timing them,
   // since scroll capture needs many per second.
-  const QString liveOutputName = qEnvironmentVariable("OMACAP_SMOKE_OUTPUT");
+  const QString liveOutputName = qEnvironmentVariable("OMARCHY_CAPTURE_SMOKE_OUTPUT");
   if (!liveOutputName.isEmpty()) {
     OutputCapture output;
     QString outputError;
@@ -12461,7 +12461,7 @@ int main(int argc, char **argv) {
   QFile::remove(snapshotPath);
   const QString savedRoot = QDir(outputDirectory).absoluteFilePath(QStringLiteral("saved"));
   QDir(savedRoot).removeRecursively();
-  qputenv("OMACAP_SCREENSHOT_DIR", savedRoot.toUtf8());
+  qputenv("OMARCHY_CAPTURE_SCREENSHOT_DIR", savedRoot.toUtf8());
 
   CaptureData capture;
   capture.monitor.name = QStringLiteral("TEST");
@@ -13457,15 +13457,15 @@ int main(int argc, char **argv) {
   if (!recognizeText(ocrImage, ocrError)
            .contains(QStringLiteral("OCR smoke test 42")))
     return 5;
-  const QByteArray savedOmacapLangs = qgetenv("OMACAP_OCR_LANGS");
+  const QByteArray savedOmarchyCaptureLangs = qgetenv("OMARCHY_CAPTURE_OCR_LANGS");
   const QByteArray savedOmarchyLangs = qgetenv("OMARCHY_OCR_LANGS");
-  qputenv("OMACAP_OCR_LANGS", "");
+  qputenv("OMARCHY_CAPTURE_OCR_LANGS", "");
   qputenv("OMARCHY_OCR_LANGS", "eng");
   const QString fallbackOcr = recognizeText(ocrImage, ocrError);
-  if (savedOmacapLangs.isEmpty())
-    qunsetenv("OMACAP_OCR_LANGS");
+  if (savedOmarchyCaptureLangs.isEmpty())
+    qunsetenv("OMARCHY_CAPTURE_OCR_LANGS");
   else
-    qputenv("OMACAP_OCR_LANGS", savedOmacapLangs);
+    qputenv("OMARCHY_CAPTURE_OCR_LANGS", savedOmarchyCaptureLangs);
   if (savedOmarchyLangs.isEmpty())
     qunsetenv("OMARCHY_OCR_LANGS");
   else
@@ -13553,7 +13553,7 @@ int main(int argc, char **argv) {
   }
   if (!QFile::exists(savedPath))
     return 70;
-  if (qEnvironmentVariableIsSet("OMACAP_SMOKE_COPY")) {
+  if (qEnvironmentVariableIsSet("OMARCHY_CAPTURE_SMOKE_COPY")) {
     QString clipboardError;
     if (!copyPngFileToClipboard(savedPath, clipboardError)) {
       qWarning().noquote() << clipboardError;

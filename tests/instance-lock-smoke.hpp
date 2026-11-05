@@ -5,7 +5,7 @@
 
 /** Environment variable that turns this executable into a lock holder. */
 inline constexpr char kInstanceLockHolderVariable[] =
-    "OMACAP_SMOKE_HOLD_INSTANCE_LOCK";
+    "OMARCHY_CAPTURE_SMOKE_HOLD_INSTANCE_LOCK";
 
 /** Checks the handover decision table and live SIGTERM handovers. */
 [[nodiscard]] bool runInstanceLockSmoke(QString &error);

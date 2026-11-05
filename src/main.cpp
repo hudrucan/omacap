@@ -125,8 +125,8 @@ QByteArray hyprctlOutput(const QStringList &arguments) {
 
 int main(int argc, char **argv) {
   startupTimingMark("entered main");
-  QCoreApplication::setApplicationName(QStringLiteral("omacap"));
-  QCoreApplication::setApplicationVersion(QString::fromLatin1(OMACAP_VERSION));
+  QCoreApplication::setApplicationName(QStringLiteral("omarchy-capture"));
+  QCoreApplication::setApplicationVersion(QString::fromLatin1(OMARCHY_CAPTURE_VERSION));
   QCoreApplication::setOrganizationName(QStringLiteral("Omarchy"));
   // Resolve editor presentation before Qt consumes its own command-line flags.
   QStringList rawArguments;
@@ -150,9 +150,10 @@ int main(int argc, char **argv) {
   // from the theme. `-platformtheme gtk3` on the command line still
   // overrides this for debugging.
   qputenv("QT_QPA_PLATFORMTHEME", "generic");
-  QGuiApplication::setDesktopFileName(QStringLiteral("omacap"));
+  QGuiApplication::setApplicationDisplayName(QStringLiteral("Omarchy Capture"));
+  QGuiApplication::setDesktopFileName(QStringLiteral("omarchy-capture"));
   QApplication application(argc, argv);
-  QApplication::setWindowIcon(QIcon(QStringLiteral(":/assets/omacap.png")));
+  QApplication::setWindowIcon(QIcon(QStringLiteral(":/assets/omarchy-capture.png")));
   startupTimingMark("QApplication constructed");
   // With the external desktop theme bypassed, Qt's default font would be
   // generic "Sans Serif 9"; pin what the theme used to install before any
@@ -284,7 +285,7 @@ int main(int argc, char **argv) {
     return 1;
   }
   QLockFile instanceLock(
-      QDir(runtime).filePath(QStringLiteral("omacap.instance")));
+      QDir(runtime).filePath(QStringLiteral("omarchy-capture.instance")));
   // Every capture, quick output included, dismisses a running overlay instead
   // of starting a second one: a late capture would otherwise photograph that overlay.
   // Editing an image always takes over so the requested editor can open.
@@ -293,7 +294,7 @@ int main(int argc, char **argv) {
                                  : InstanceMode::Capture);
   startupTimingMark("instance lock acquired");
   if (lockResult.signalledPid != 0)
-    qInfo().noquote() << QStringLiteral("Asked the running omacap (pid %1) to "
+    qInfo().noquote() << QStringLiteral("Asked the running omarchy-capture (pid %1) to "
                                         "quit")
                              .arg(lockResult.signalledPid);
   if (!lockResult.proceed) {
@@ -420,8 +421,8 @@ int main(int argc, char **argv) {
     editor.setWindowedBackdropOpaque(
         loadEditorWindowBackdropOpaque(defaultConfigPath()));
     editor.setWindowTitle(
-        filePath.isEmpty() ? QStringLiteral("omacap")
-                           : QStringLiteral("omacap %1")
+        filePath.isEmpty() ? QStringLiteral("Omarchy Capture")
+                           : QStringLiteral("Omarchy Capture %1")
                                  .arg(QFileInfo(filePath).fileName()));
     // Size to the visible selection, not the pristine canvas: a handed-off
     // capture keeps its whole monitor underneath, but the window should hug
@@ -503,8 +504,8 @@ int main(int argc, char **argv) {
     rules->setFuture(QtConcurrent::run([floatingWindow] {
       hyprctlOutput({QStringLiteral("eval"), editorFloatRuleScript(floatingWindow)});
       hyprctlOutput({QStringLiteral("eval"),
-                     QStringLiteral("hl.window_rule({ name = \"omacap-editor-opaque\", "
-                                    "match = { title = \"^omacap( .+)?$\" }, opacity = 1 })")});
+                     QStringLiteral("hl.window_rule({ name = \"omarchy-capture-editor-opaque\", "
+                                    "match = { title = \"^Omarchy Capture( .+)?$\" }, opacity = 1 })")});
     }));
     const int result = application.exec();
     // The closed editor may still be retaining its handoff document. A fresh
@@ -522,7 +523,7 @@ int main(int argc, char **argv) {
     qCritical() << "Could not create capture overlay layer";
     return 1;
   }
-  layerWindow->setScope(QStringLiteral("omacap"));
+  layerWindow->setScope(QStringLiteral("omarchy-capture"));
   layerWindow->setScreen(targetScreen);
   layerWindow->setLayer(LayerShellQt::Window::LayerOverlay);
   LayerShellQt::Window::Anchors anchors;

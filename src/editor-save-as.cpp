@@ -29,8 +29,8 @@ void prepareSaveAsWindow() {
   QProcess process;
   process.start(QStringLiteral("hyprctl"),
                 {QStringLiteral("eval"),
-                 QStringLiteral("hl.window_rule({ name = \"omacap-save-as\", "
-                                "match = { class = \"^omacap$\", "
+                 QStringLiteral("hl.window_rule({ name = \"omarchy-capture-save-as\", "
+                                "match = { class = \"^omarchy-capture$\", "
                                 "title = \"^Save screenshot as$\" }, "
                                 "float = true, center = true, opacity = 1 })")});
   if (!process.waitForFinished(500)) {
@@ -96,7 +96,7 @@ void CaptureEditor::showSaveAsDialog(const QString &suggested) {
                                  QStringLiteral("PNG image (*.png)"));
   saveAsDialog_ = dialog;
   const quint64 request = saveAsRequest_;
-  dialog->setObjectName(QStringLiteral("omacap-save-as"));
+  dialog->setObjectName(QStringLiteral("omarchy-capture-save-as"));
   dialog->setScreen(screen());
   dialog->setFont(chromeFont(13));
   dialog->resize(760, 520);

@@ -70,7 +70,7 @@ bool waitForPendingCaptures(const QDir &dir, const QString &id = {}) {
 } // namespace
 
 QString captureHandoffDirectory() {
-  QString root = qEnvironmentVariable("OMACAP_HANDOFF_DIR");
+  QString root = qEnvironmentVariable("OMARCHY_CAPTURE_HANDOFF_DIR");
   if (root.isEmpty()) {
     const QString runtime = secureRuntimeDirectory();
     if (runtime.isEmpty())

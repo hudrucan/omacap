@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="380" viewBox="0 0 1280 380" fill="none">
-  <title>Omacap</title>
+  <title>Omarchy Capture</title>
   <desc>Capture a moment. Copy it anywhere. Native screenshots for Omarchy.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1280" y2="380" gradientUnits="userSpaceOnUse">
@@ -17,7 +17,7 @@
   </g>
   <rect x="79" y="80" width="11" height="12" rx="3" fill="#eef4ff"/>
   <g font-family="DejaVu Sans, sans-serif">
-    <text x="120" y="102" fill="#eef4ff" font-size="46" font-weight="700" letter-spacing="-2">Omacap</text>
+    <text x="120" y="102" fill="#eef4ff" font-size="46" font-weight="700" letter-spacing="-2">Omarchy Capture</text>
     <text x="64" y="185" fill="#eef4ff" font-size="38" font-weight="700" letter-spacing="-1">Capture a moment.</text>
     <text x="64" y="235" fill="#86b7ff" font-size="38" font-weight="700" letter-spacing="-1">Copy it anywhere.</text>
     <text x="64" y="307" fill="#9cacbf" font-size="16">NATIVE SCREENSHOTS FOR OMARCHY</text>

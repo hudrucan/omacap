@@ -1,6 +1,6 @@
 # Bundled annotation fonts
 
-Omacap bundles its annotation faces so saved captures render identically on
+Omarchy Capture bundles its annotation faces so saved captures render identically on
 every Omarchy installation.
 
 - `Neucha.ttf` is the unmodified face from the official Google Fonts
@@ -8,7 +8,7 @@ every Omarchy installation.
   <https://github.com/google/fonts/blob/main/ofl/neucha/Neucha.ttf>.
   Its SHA-256 is
   `7927bd6ce090fa032857dcbc3ad0e8b765c462d0a72a8779068132496b4e087d`.
-  It remains Omacap's default, and its license is `OFL.txt`.
+  It remains Omarchy Capture's default, and its license is `OFL.txt`.
 - `JetBrainsMono-Regular.ttf` is the unmodified Regular face from JetBrains
   Mono v2.304's official release archive:
   <https://github.com/JetBrains/JetBrainsMono/releases/download/v2.304/JetBrainsMono-2.304.zip>.

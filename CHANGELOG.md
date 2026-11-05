@@ -1,12 +1,17 @@
 # Changelog
 
-## Omacap 0.1.0 (unreleased)
+## Unreleased
+
+## 1.0.0 — 2026-11-05
+
+- Rebrand the app and repository as Omarchy Capture (`omarchy-capture`).
+- Remove floating previews, pinned images, and their shortcuts.
 
 - Open the fullscreen editor when a capture notification is clicked, without hover action buttons or a cloned notification plugin.
 - Fork Omasnap with a compact toolbar, a new icon, and separate app paths.
 - Copy captures by default; save only on request. Copy in the editor is silent.
 - Remove hover tooltips and leave space between the toolbar and its menus.
-- Remove screenshot history; keep only temporary data for notification and preview actions.
+- Remove screenshot history; keep only temporary data for notifications.
 
 The entries below are inherited from Omasnap. Earlier upstream development is
 recorded in its [commit history](https://github.com/omacom/omasnap/commits/main/).
@@ -271,7 +276,7 @@ recorded in its [commit history](https://github.com/omacom/omasnap/commits/main/
 - Keep the toolbar, capture tabs, hotkey legend, and canvas geometry aligned.
 - Remove the pixels actually covered by a cut-band drag.
 
-[Unreleased changes](https://github.com/omacom/omasnap/compare/v1.24.0...main)
+[Unreleased changes](https://github.com/hudrucan/omarchy-capture/commits/main)
 · [1.24.0 changes](https://github.com/omacom/omasnap/compare/v1.23.0...v1.24.0)
 · [1.23.0 changes](https://github.com/omacom/omasnap/compare/v1.22.0...v1.23.0)
 · [1.22.0 changes](https://github.com/omacom/omasnap/compare/v1.21.0...v1.22.0)

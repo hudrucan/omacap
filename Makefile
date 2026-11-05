@@ -25,7 +25,7 @@ build: configure
 	$(CMAKE) --build $(BUILD_DIR) --parallel
 
 smoke: build
-	QT_QPA_PLATFORM=offscreen $(BUILD_DIR)/omacap-smoke
+	QT_QPA_PLATFORM=offscreen $(BUILD_DIR)/omarchy-capture-smoke
 
 lint: build
 	@set -eu; \

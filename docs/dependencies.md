@@ -28,7 +28,7 @@ On a captured 6K desktop, Qt's default PNG encoding took about 3 seconds;
 even its fastest compressed setting took about 700 ms. Libdeflate brought
 compression to about 150 ms with identical decoded pixels and similar file
 size. It earns its dependency by removing that capture-to-clipboard delay.
-The fast encoder also writes Omacap's small logical-size PNG text field, so
+The fast encoder also writes Omarchy Capture's small logical-size PNG text field, so
 standalone captures reopen at their original display size without resampling.
 Qt still reads every image and writes images with profiles/other text/offset metadata,
 high-bit-depth formats, and captures exceeding the encoder's 128 MiB filtered
@@ -37,10 +37,10 @@ is preserved on both paths. No quality or compression setting is exposed.
 
 ## Runtime: external processes, not libraries
 
-Omacap shells out to a small number of existing Omarchy/Arch tools instead
+Omarchy Capture shells out to a small number of existing Omarchy/Arch tools instead
 of linking their libraries in-process. This is intentional: a `QProcess`
 call to a well-maintained CLI tool that's already on every Omarchy install
-is a dependency Omacap doesn't have to build, version, or debug — the
+is a dependency Omarchy Capture doesn't have to build, version, or debug — the
 alternative (vendoring an OCR engine, a clipboard protocol implementation,
 or a compositor IPC client) would be strictly more code and more risk for
 no user-visible benefit.
@@ -59,7 +59,7 @@ detached. None run inline on the UI thread.
 ## Not a dependency: external Qt platform themes
 
 Omarchy exports `QT_QPA_PLATFORMTHEME=gtk3` for the whole session so Qt apps
-match GTK apps. Omacap overrides it to `generic` (Qt's built-in theme) for
+match GTK apps. Omarchy Capture overrides it to `generic` (Qt's built-in theme) for
 its own process in `main()` before `QApplication` is constructed: honouring
 the session value loads the `qgtk3` plugin,
 which initialises GTK3, GLib/GIO and dconf inside the process — measured at
@@ -92,7 +92,7 @@ No native platform-theme plugin or new dependency is needed.
 
 ## The one config file
 
-`~/.config/omacap/omacap.conf` is optional INI, read with `QSettings`.
+`~/.config/omarchy-capture/omarchy-capture.conf` is optional INI, read with `QSettings`.
 Its existing overrides cover screenshot destination/filename patterns, preset
 colors, editor presentation, and custom backdrop defaults. It is not a
 general settings mechanism. See the "minimally configurable" principle in
@@ -124,7 +124,7 @@ Ask, in order:
 ## Binary size
 
 Single, statically-linked-where-practical binary, installed to
-`~/.local/bin/omacap` (see the repository's `install-omarchy`). Every
+`~/.local/bin/omarchy-capture` (see the repository's `install-omarchy`). Every
 dependency added here is weight every user carries on every install and
 every update. If a feature can be built with what's already linked, that's
 the implementation to ship.

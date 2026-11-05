@@ -821,7 +821,7 @@ CaptureEditor::CaptureEditor(CaptureData capture, CaptureMode mode,
       seedConfiguredBackground(defaultStyle);
     }
   }
-  setWindowTitle(QStringLiteral("Omacap"));
+  setWindowTitle(QStringLiteral("Omarchy Capture"));
   setWindowFlags(Qt::Window | Qt::FramelessWindowHint |
                  Qt::WindowStaysOnTopHint);
   setAttribute(Qt::WA_TranslucentBackground);
@@ -3346,7 +3346,7 @@ void CaptureEditor::handOffEditor(bool toWindow) {
       if (launched) {
         return QString();
       }
-      error = QStringLiteral("Could not start omacap");
+      error = QStringLiteral("Could not start omarchy-capture");
     }
     QFile::remove(path);
     QFile::remove(operationLogPath(path));

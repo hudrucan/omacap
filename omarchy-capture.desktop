@@ -1,9 +1,9 @@
 [Desktop Entry]
 Type=Application
-Name=Omacap
+Name=Omarchy Capture
 Comment=Capture, copy, and mark up screenshots
-Exec=omacap --notify
-Icon=omacap
+Exec=omarchy-capture --notify
+Icon=omarchy-capture
 Terminal=false
 Categories=Graphics;
 StartupNotify=false

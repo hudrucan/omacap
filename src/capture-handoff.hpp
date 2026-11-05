@@ -17,7 +17,7 @@ struct CaptureHandoff {
 
 constexpr int kHandoffThumbEdge = 320;
 
-/// Private runtime directory. OMACAP_HANDOFF_DIR isolates test fixtures.
+/// Private runtime directory. OMARCHY_CAPTURE_HANDOFF_DIR isolates test fixtures.
 [[nodiscard]] QString captureHandoffDirectory();
 
 /// Reserve before showing a preview; its Edit action waits for publication.

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(omacap VERSION 0.1.0 LANGUAGES C CXX)
+project(omarchy-capture VERSION 1.0.0 LANGUAGES C CXX)
 include(GNUInstallDirs)
 include(CTest)
 set(CMAKE_AUTOMOC ON)
@@ -33,7 +33,7 @@ foreach(PROTOCOL_XML IN LISTS PROTOCOL_XMLS)
   list(APPEND PROTOCOL_SOURCES "${PROTOCOL_HEADER}" "${PROTOCOL_CODE}")
 endforeach()
 
-add_library(omacap-core STATIC
+add_library(omarchy-capture-core STATIC
   src/cli-path.cpp
   src/cli-path.hpp
   src/icons.cpp
@@ -82,7 +82,7 @@ add_library(omacap-core STATIC
   src/editor-save-as.cpp
   src/editor.hpp
 )
-qt_add_resources(omacap-core "capture-fonts"
+qt_add_resources(omarchy-capture-core "capture-fonts"
   PREFIX "/fonts"
   BASE "${CMAKE_CURRENT_SOURCE_DIR}/assets"
   FILES
@@ -91,8 +91,8 @@ qt_add_resources(omacap-core "capture-fonts"
     "${CMAKE_CURRENT_SOURCE_DIR}/assets/InterDisplay-SemiBold.ttf"
 )
 
-# CXX-only: omacap-core also compiles Wayland protocol .c files.
-target_precompile_headers(omacap-core PRIVATE
+# CXX-only: omarchy-capture-core also compiles Wayland protocol .c files.
+target_precompile_headers(omarchy-capture-core PRIVATE
   "$<$<COMPILE_LANGUAGE:CXX>:<QtWidgets/QWidget$<ANGLE-R>>"
   "$<$<COMPILE_LANGUAGE:CXX>:<QtWidgets/QApplication$<ANGLE-R>>"
   "$<$<COMPILE_LANGUAGE:CXX>:<QtGui/QPainter$<ANGLE-R>>"
@@ -119,13 +119,13 @@ target_precompile_headers(omacap-core PRIVATE
   "$<$<COMPILE_LANGUAGE:CXX>:<cmath$<ANGLE-R>>"
 )
 
-target_include_directories(omacap-core PUBLIC
+target_include_directories(omarchy-capture-core PUBLIC
   "${CMAKE_CURRENT_BINARY_DIR}"
   "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
-target_compile_features(omacap-core PUBLIC cxx_std_23)
-target_compile_options(omacap-core PRIVATE -Wall -Wextra -Wpedantic)
-target_link_libraries(omacap-core PUBLIC
+target_compile_features(omarchy-capture-core PUBLIC cxx_std_23)
+target_compile_options(omarchy-capture-core PRIVATE -Wall -Wextra -Wpedantic)
+target_link_libraries(omarchy-capture-core PUBLIC
   Qt6::Concurrent
   Qt6::Core
   Qt6::Gui
@@ -135,18 +135,18 @@ target_link_libraries(omacap-core PUBLIC
   PkgConfig::Libdeflate
 )
 
-qt_add_executable(omacap src/main.cpp)
-qt_add_resources(omacap "application-icon"
+qt_add_executable(omarchy-capture src/main.cpp)
+qt_add_resources(omarchy-capture "application-icon"
   PREFIX "/"
-  FILES assets/omacap.png
+  FILES assets/omarchy-capture.png
 )
-target_compile_options(omacap PRIVATE -Wall -Wextra -Wpedantic)
-target_compile_definitions(omacap PRIVATE OMACAP_VERSION="${PROJECT_VERSION}")
-target_link_libraries(omacap PRIVATE omacap-core)
-target_precompile_headers(omacap REUSE_FROM omacap-core)
+target_compile_options(omarchy-capture PRIVATE -Wall -Wextra -Wpedantic)
+target_compile_definitions(omarchy-capture PRIVATE OMARCHY_CAPTURE_VERSION="${PROJECT_VERSION}")
+target_link_libraries(omarchy-capture PRIVATE omarchy-capture-core)
+target_precompile_headers(omarchy-capture REUSE_FROM omarchy-capture-core)
 
 if(BUILD_TESTING)
-qt_add_executable(omacap-smoke
+qt_add_executable(omarchy-capture-smoke
   tests/scroll-focus-smoke.cpp
   tests/scroll-focus-smoke.hpp
   tests/chrome-theme-smoke.cpp
@@ -193,14 +193,14 @@ qt_add_executable(omacap-smoke
   tests/save-as-smoke.cpp
   tests/save-as-smoke.hpp
 )
-target_include_directories(omacap-smoke PRIVATE
+target_include_directories(omarchy-capture-smoke PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/tests"
 )
-target_compile_options(omacap-smoke PRIVATE -Wall -Wextra -Wpedantic)
-target_link_libraries(omacap-smoke PRIVATE omacap-core Qt6::Test)
-target_precompile_headers(omacap-smoke REUSE_FROM omacap-core)
-add_test(NAME omacap-smoke COMMAND omacap-smoke)
-set_tests_properties(omacap-smoke PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+target_compile_options(omarchy-capture-smoke PRIVATE -Wall -Wextra -Wpedantic)
+target_link_libraries(omarchy-capture-smoke PRIVATE omarchy-capture-core Qt6::Test)
+target_precompile_headers(omarchy-capture-smoke REUSE_FROM omarchy-capture-core)
+add_test(NAME omarchy-capture-smoke COMMAND omarchy-capture-smoke)
+set_tests_properties(omarchy-capture-smoke PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()
 
 qt_add_executable(stitch-replay
@@ -215,19 +215,19 @@ target_compile_features(stitch-replay PRIVATE cxx_std_23)
 target_compile_options(stitch-replay PRIVATE -Wall -Wextra -Wpedantic)
 target_link_libraries(stitch-replay PRIVATE Qt6::Core Qt6::Gui)
 
-install(TARGETS omacap
+install(TARGETS omarchy-capture
   RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
 )
 install(FILES assets/OFL.txt
-  DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/omacap"
+  DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/omarchy-capture"
   RENAME Neucha-OFL.txt
 )
 install(FILES assets/JetBrainsMono-OFL.txt assets/Inter-OFL.txt assets/Lucide-ISC.txt
-  DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/omacap"
+  DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/omarchy-capture"
 )
-install(FILES omacap.desktop
+install(FILES omarchy-capture.desktop
   DESTINATION "${CMAKE_INSTALL_DATADIR}/applications"
 )
-install(FILES assets/omacap.svg
+install(FILES assets/omarchy-capture.svg
   DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps"
 )

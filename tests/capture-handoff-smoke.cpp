@@ -95,15 +95,15 @@ bool runCaptureHandoffSmoke(QApplication &application, QString &error) {
     return false;
   const auto previousRuntime = qgetenv("XDG_RUNTIME_DIR");
   const auto previousState = qgetenv("XDG_STATE_HOME");
-  const auto previousHandoff = qgetenv("OMACAP_HANDOFF_DIR");
+  const auto previousHandoff = qgetenv("OMARCHY_CAPTURE_HANDOFF_DIR");
   const auto restore = qScopeGuard([&] {
     qputenv("XDG_RUNTIME_DIR", previousRuntime);
     qputenv("XDG_STATE_HOME", previousState);
-    qputenv("OMACAP_HANDOFF_DIR", previousHandoff);
+    qputenv("OMARCHY_CAPTURE_HANDOFF_DIR", previousHandoff);
   });
   qputenv("XDG_RUNTIME_DIR", runtime.path().toUtf8());
   qputenv("XDG_STATE_HOME", state.path().toUtf8());
-  qunsetenv("OMACAP_HANDOFF_DIR");
+  qunsetenv("OMARCHY_CAPTURE_HANDOFF_DIR");
   const QString directory = captureHandoffDirectory();
   if (!directory.startsWith(runtime.path() + '/')) {
     error = QStringLiteral("Action data escaped the runtime directory");

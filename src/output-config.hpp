@@ -44,5 +44,5 @@ struct OutputConfig {
  *  solid backdrop instead of the overlay's see-through dim. */
 [[nodiscard]] bool loadEditorWindowBackdropOpaque(const QString &filePath);
 
-/** ~/.config/omacap/omacap.conf (XDG config location). */
+/** ~/.config/omarchy-capture/omarchy-capture.conf (XDG config location). */
 [[nodiscard]] QString defaultConfigPath();

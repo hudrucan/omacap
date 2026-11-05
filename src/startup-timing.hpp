@@ -4,7 +4,7 @@
 
 /**
  * Opt-in startup tracing for launch-to-overlay profiling. Set
- * OMACAP_PROFILE_STARTUP=1 to print cumulative and per-stage timings to
+ * OMARCHY_CAPTURE_PROFILE_STARTUP=1 to print cumulative and per-stage timings to
  * stderr. Disabled runs pay only one cached boolean check per trace point.
  */
 [[nodiscard]] bool startupTimingEnabled();

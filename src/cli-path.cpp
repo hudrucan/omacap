@@ -57,7 +57,7 @@ void configureCaptureCommandLine(QCommandLineParser &parser, bool beforeQt) {
       "and show a\nnotification; click it to open the fullscreen editor.\n"
       "Use Save to keep a file, or --editor to edit before output.\n"
       "\n"
-      "Only one capture overlay runs at a time. Starting omacap again while "
+      "Only one capture overlay runs at a time. Starting omarchy-capture again while "
       "an\noverlay is open dismisses it: the running instance is asked to "
       "quit and the\nnew process exits without capturing, so the same hotkey "
       "opens and closes the\noverlay. Quick output (--copy, --save) dismisses "
@@ -113,7 +113,7 @@ void configureCaptureCommandLine(QCommandLineParser &parser, bool beforeQt) {
       QStringLiteral("editor"),
       QStringLiteral("Edit before output, using overlay (fullscreen) or "
                      "window (a normal compositor window). Also configurable "
-                     "as [editor] mode in omacap.conf; W switches a live "
+                     "as [editor] mode in omarchy-capture.conf; W switches a live "
                      "editor between the two."),
       QStringLiteral("mode"));
   parser.addOption(editorOption);

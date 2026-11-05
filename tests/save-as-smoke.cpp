@@ -49,7 +49,7 @@ template <typename Predicate> bool waitUntil(Predicate ready) {
 }
 QFileDialog *saveDialog() {
   for (QWidget *widget : QApplication::topLevelWidgets()) {
-    if (widget->objectName() == QStringLiteral("omacap-save-as"))
+    if (widget->objectName() == QStringLiteral("omarchy-capture-save-as"))
       return qobject_cast<QFileDialog *>(widget);
   }
   return nullptr;
@@ -62,14 +62,14 @@ bool runSaveAsSmoke(QString &error) {
     error = QStringLiteral("Could not create Save As test directory");
     return false;
   }
-  const QByteArray previousRecents = qgetenv("OMACAP_HANDOFF_DIR");
+  const QByteArray previousRecents = qgetenv("OMARCHY_CAPTURE_HANDOFF_DIR");
   const auto restoreRecents = qScopeGuard([&] {
     if (previousRecents.isNull())
-      qunsetenv("OMACAP_HANDOFF_DIR");
+      qunsetenv("OMARCHY_CAPTURE_HANDOFF_DIR");
     else
-      qputenv("OMACAP_HANDOFF_DIR", previousRecents);
+      qputenv("OMARCHY_CAPTURE_HANDOFF_DIR", previousRecents);
   });
-  qputenv("OMACAP_HANDOFF_DIR", directory.filePath(QStringLiteral("capture-id")).toUtf8());
+  qputenv("OMARCHY_CAPTURE_HANDOFF_DIR", directory.filePath(QStringLiteral("capture-id")).toUtf8());
   const QString target = directory.filePath(QStringLiteral("chosen.png"));
   QImage original(100, 80, QImage::Format_ARGB32);
   original.fill(Qt::red);
